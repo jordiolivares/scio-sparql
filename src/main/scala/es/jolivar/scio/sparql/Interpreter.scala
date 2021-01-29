@@ -7,6 +7,7 @@ import org.eclipse.rdf4j.query.algebra.{
   BindingSetAssignment,
   Distinct,
   Exists,
+  Extension,
   Filter,
   Group,
   Join,
@@ -199,6 +200,17 @@ object Interpreter {
         val bindings =
           bindingSetAssignment.getBindingSets.asScala.map(_.toResultSet)
         sc.parallelize(bindings)
+      case extension: Extension =>
+        val results = processOperation(fullDataset)(extension.getArg)
+        val extraValues = extension.getElements.asScala
+          .map(_.getExpr)
+          .foldLeft(EMPTY_RESULT_SET) {
+            case (acc, varDecl: Var) =>
+              acc + (varDecl.getName -> Option(varDecl.getValue))
+          }
+        results.map { resultSet =>
+          resultSet ++ extraValues
+        }
     }
   }
 }
