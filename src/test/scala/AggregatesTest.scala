@@ -5,14 +5,24 @@ class AggregatesTest extends SparqlPipelineTest {
     val query =
       """
         |PREFIX : <http://books.example/>
-        |SELECT (SUM(?lprice) AS ?totalPrice)
+        |SELECT ?org (SUM(?lprice) AS ?totalPrice)
         |WHERE {
         |  ?org :affiliates ?auth .
         |  ?auth :writesBook ?book .
         |  ?book :price ?lprice .
         |}
-        |GROUP BY ?org
-        |HAVING (SUM(?lprice) > 10)""".stripMargin
+        |GROUP BY ?org""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
+
+  it should "work with a COUNT" in {
+    val query =
+      """
+        |PREFIX : <http://books.example/>
+        |SELECT ?auth (COUNT(?book) AS ?numBooks)
+        |WHERE {
+        |  ?auth :writesBook ?book .
+        |} GROUP BY ?auth""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
 }

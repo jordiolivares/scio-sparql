@@ -1,10 +1,14 @@
 package es.jolivar.scio.sparql
 
 import com.spotify.scio.values.SCollection
-import org.eclipse.rdf4j.model.{IRI, Resource, Statement, Value}
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory
+import org.eclipse.rdf4j.model.{IRI, Literal, Resource, Statement, Value}
+import org.eclipse.rdf4j.query.algebra.MathExpr.MathOp
 import org.eclipse.rdf4j.query.algebra._
 import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
 import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
+
+import ValueEvaluators._
 
 import scala.jdk.CollectionConverters._
 
@@ -12,6 +16,19 @@ object Interpreter {
   type ResultSet = Map[String, Value]
   private val EMPTY_RESULT_SET: ResultSet = Map()
   private type Bindings = List[String]
+
+  private val vf = SimpleValueFactory.getInstance()
+
+  implicit class ResultSetExt(val resultSet: ResultSet) extends AnyVal {
+    def evaluateValueExpr(valueExpr: ValueExpr): (String, Option[Value]) = {
+      valueExpr match {
+        case varExpr: Var if varExpr.hasValue =>
+          varExpr.getName -> Some(varExpr.getValue)
+        case varExpr: Var => varExpr.getName -> resultSet.get(varExpr.getName)
+        case sum: Sum     => evaluateValueExpr(sum.getArg)
+      }
+    }
+  }
 
   implicit class VarExt(val v: Var) extends AnyVal {
     def matches(resource: Resource): Boolean = {
@@ -193,23 +210,112 @@ object Interpreter {
         val results = processOperation(fullDataset)(reduced.getArg)
         val bindings = reduced.getBindingNames.asScala.toList
         results.distinctBy(bindings.getBindingsForKeying)
-      // TODO: Groupings
+      case group: Group =>
+        val results = processOperation(fullDataset)(group.getArg)
+        val bindingsToGroupBy = group.getGroupBindingNames.asScala.toList
+        val keyedResults = results.keyBy(bindingsToGroupBy.getBindingsForKeying)
+        val groupElems = group.getGroupElements.asScala.map { groupElem =>
+          val bindingName = groupElem.getName
+          val resultsPerKey = groupElem.getOperator match {
+//            case count: Count =>
+//              val evaluatedExpr =
+//                keyedResults
+//                  .mapValues(_.evaluateValueExpr(count.getArg))
+//                  .filterValues(_._2.isDefined)
+//                  .mapValues(_._2.get)
+//              val countedPerKey = if (!count.isDistinct) {
+//                evaluatedExpr.countByKey
+//              } else {
+//                evaluatedExpr
+//                  .map {
+//                    case (k, v) => (k, v.toString) -> v
+//                  }
+//                  .countByKey
+//                  .map {
+//                    case ((k, _), num) => k -> num
+//                  }
+//                  .sumByKey
+//              }
+//              countedPerKey.mapValues(x =>
+//                Map(bindingName -> vf.createLiteral(x).asInstanceOf[Value])
+//              )
+            case sum: Sum =>
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(sum.getArg)
+                  )
+                  .collect {
+                    case (key, resultSet -> (_ -> Some(literal))) =>
+                      key -> (resultSet -> literal.asInstanceOf[Literal])
+                  }
+              val summedPerKey = if (!sum.isDistinct) {
+                evaluatedExpr.reduceByKey {
+                  case (
+                        (originalBindings, evaluatedExpr1),
+                        (_, evaluatedExpr2)
+                      ) =>
+                    originalBindings -> (evaluatedExpr1 + evaluatedExpr2)
+                }
+              } else {
+                evaluatedExpr
+                  .map {
+                    case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                  }
+                  .reduceByKey {
+                    case (
+                          (originalBindings, evaluatedExpr1),
+                          (_, evaluatedExpr2)
+                        ) =>
+                      originalBindings -> (evaluatedExpr1 + evaluatedExpr2)
+                  }
+                  .map {
+                    case ((key, _), pair) => key -> pair
+                  }
+                  .reduceByKey {
+                    case (
+                          (originalBindings, evaluatedExpr1),
+                          (_, evaluatedExpr2)
+                        ) =>
+                      originalBindings -> (evaluatedExpr1 + evaluatedExpr2)
+                  }
+              }
+              summedPerKey.mapValues {
+                case (resultSet, aggregatedLiteral) =>
+                  resultSet -> Map(
+                    bindingName -> aggregatedLiteral.asInstanceOf[Value]
+                  )
+              }
+          }
+          resultsPerKey
+        }
+        groupElems
+          .reduce { (map1, map2) =>
+            map1.join(map2).mapValues {
+              case ((x, aggregations1), (_, aggregations2)) =>
+                x -> (aggregations1 ++ aggregations2)
+            }
+          }
+          .values
+          .map {
+            case (resultSet, value) =>
+              val groupingBindings =
+                resultSet.filter(x => bindingsToGroupBy.contains(x._1))
+              groupingBindings ++ value
+          }
       case bindingSetAssignment: BindingSetAssignment =>
         val bindings =
           bindingSetAssignment.getBindingSets.asScala.map(_.toResultSet)
         sc.parallelize(bindings)
       case extension: Extension =>
         val results = processOperation(fullDataset)(extension.getArg)
-        val extraValues = extension.getElements.asScala
-          .map(_.getExpr)
-          .foldLeft(EMPTY_RESULT_SET) {
-            case (acc, varDecl: Var) if varDecl.hasValue =>
-              acc + (varDecl.getName -> varDecl.getValue)
-            case (acc, varDecl: Var) if !varDecl.hasValue =>
-              acc
-          }
+        val extraValues = extension.getElements.asScala.map(_.getExpr)
         results.map { resultSet =>
-          resultSet ++ extraValues
+          val extensionValues =
+            extraValues.map(resultSet.evaluateValueExpr).collect {
+              case k -> Some(v) => k -> v
+            }
+          resultSet ++ extensionValues
         }
     }
     results.tap { resultSet =>
