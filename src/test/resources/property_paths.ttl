@@ -1,0 +1,10 @@
+@prefix :       <http://example/> .
+
+:order  :item :z1 .
+:order  :item :z2 .
+
+:z1 :name "Small" .
+:z1 :price 5 .
+
+:z2 :name "Large" .
+:z2 :price 5 .
