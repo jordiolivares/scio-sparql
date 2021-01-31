@@ -88,6 +88,10 @@ object Interpreter {
     def getBindingsOf(resultSet: ResultSet): List[Option[Value]] = {
       bindings.map(k => resultSet.get(k))
     }
+
+    def getBindingsForKeying(resultSet: ResultSet): List[Option[String]] = {
+      getBindingsOf(resultSet).map(_.map(_.toString))
+    }
   }
 
   implicit class BindingSetExt(val bindingSet: BindingSet) extends AnyVal {
@@ -118,7 +122,7 @@ object Interpreter {
       tupleExpr: TupleExpr
   ): SCollection[ResultSet] = {
     val sc = fullDataset.context
-    tupleExpr match {
+    val results = tupleExpr match {
       case statementPattern: StatementPattern =>
         fullDataset
           .filter(statementPattern.matches)
@@ -136,8 +140,9 @@ object Interpreter {
               left ++ right
           }
         } else {
-          val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsOf)
-          val keyedRight = rightDataset.keyBy(commonBindings.getBindingsOf)
+          val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
+          val keyedRight =
+            rightDataset.keyBy(commonBindings.getBindingsForKeying)
           keyedLeft.join(keyedRight).values.map {
             case (left, right) =>
               left ++ right
@@ -156,8 +161,9 @@ object Interpreter {
               left ++ right
           }
         } else {
-          val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsOf)
-          val keyedRight = rightDataset.keyBy(commonBindings.getBindingsOf)
+          val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
+          val keyedRight =
+            rightDataset.keyBy(commonBindings.getBindingsForKeying)
           keyedLeft.leftOuterJoin(keyedRight).values.map {
             case (left, right) =>
               left ++ right.getOrElse(EMPTY_RESULT_SET)
@@ -182,11 +188,11 @@ object Interpreter {
       case distinct: Distinct =>
         val results = processOperation(fullDataset)(distinct.getArg)
         val bindings = distinct.getBindingNames.asScala.toList
-        results.distinctBy(bindings.getBindingsOf)
+        results.distinctBy(bindings.getBindingsForKeying)
       case reduced: Reduced =>
         val results = processOperation(fullDataset)(reduced.getArg)
         val bindings = reduced.getBindingNames.asScala.toList
-        results.distinctBy(bindings.getBindingsOf)
+        results.distinctBy(bindings.getBindingsForKeying)
       // TODO: Groupings
       case bindingSetAssignment: BindingSetAssignment =>
         val bindings =
@@ -205,6 +211,9 @@ object Interpreter {
         results.map { resultSet =>
           resultSet ++ extraValues
         }
+    }
+    results.tap { resultSet =>
+      tupleExpr -> resultSet
     }
   }
 }
