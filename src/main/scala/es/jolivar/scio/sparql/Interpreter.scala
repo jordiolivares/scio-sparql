@@ -9,7 +9,7 @@ import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
 import scala.jdk.CollectionConverters._
 
 object Interpreter {
-  type ResultSet = Map[String, Option[Value]]
+  type ResultSet = Map[String, Value]
   private val EMPTY_RESULT_SET: ResultSet = Map()
   private type Bindings = List[String]
 
@@ -67,26 +67,18 @@ object Interpreter {
     def convertToResultSet(stmt: Statement): ResultSet = {
       var resultSet: ResultSet = Map()
       if (!statementPattern.getSubjectVar.hasValue) {
-        resultSet += statementPattern.getSubjectVar.getName -> Option(
-          stmt.getSubject
-        )
+        resultSet += statementPattern.getSubjectVar.getName -> stmt.getSubject
       }
       if (!statementPattern.getPredicateVar.hasValue) {
-        resultSet += statementPattern.getPredicateVar.getName -> Option(
-          stmt.getPredicate
-        )
+        resultSet += statementPattern.getPredicateVar.getName -> stmt.getPredicate
       }
       if (!statementPattern.getObjectVar.hasValue) {
-        resultSet += statementPattern.getObjectVar.getName -> Option(
-          stmt.getObject
-        )
+        resultSet += statementPattern.getObjectVar.getName -> stmt.getObject
       }
       if (
         statementPattern.getContextVar != null && !statementPattern.getContextVar.hasValue
       ) {
-        resultSet += statementPattern.getContextVar.getName -> Option(
-          stmt.getContext
-        )
+        resultSet += statementPattern.getContextVar.getName -> stmt.getContext
       }
       resultSet
     }
@@ -94,14 +86,14 @@ object Interpreter {
 
   implicit class BindingsExt(val bindings: Bindings) extends AnyVal {
     def getBindingsOf(resultSet: ResultSet): List[Option[Value]] = {
-      bindings.map(k => resultSet(k))
+      bindings.map(k => resultSet.get(k))
     }
   }
 
   implicit class BindingSetExt(val bindingSet: BindingSet) extends AnyVal {
     def toResultSet: ResultSet = {
       bindingSet.asScala.map { binding =>
-        binding.getName -> Some(binding.getValue)
+        binding.getName -> binding.getValue
       }.toMap
     }
   }
@@ -205,8 +197,10 @@ object Interpreter {
         val extraValues = extension.getElements.asScala
           .map(_.getExpr)
           .foldLeft(EMPTY_RESULT_SET) {
-            case (acc, varDecl: Var) =>
-              acc + (varDecl.getName -> Option(varDecl.getValue))
+            case (acc, varDecl: Var) if varDecl.hasValue =>
+              acc + (varDecl.getName -> varDecl.getValue)
+            case (acc, varDecl: Var) if !varDecl.hasValue =>
+              acc
           }
         results.map { resultSet =>
           resultSet ++ extraValues
