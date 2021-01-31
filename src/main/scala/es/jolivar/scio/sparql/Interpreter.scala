@@ -1,26 +1,10 @@
 package es.jolivar.scio.sparql
 
-import com.spotify.scio.ScioContext
 import com.spotify.scio.values.SCollection
-import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
-import org.eclipse.rdf4j.query.algebra.{
-  BindingSetAssignment,
-  Distinct,
-  Exists,
-  Extension,
-  Filter,
-  Group,
-  Join,
-  LeftJoin,
-  Projection,
-  Reduced,
-  StatementPattern,
-  TupleExpr,
-  Union,
-  Var
-}
-import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
 import org.eclipse.rdf4j.model.{IRI, Resource, Statement, Value}
+import org.eclipse.rdf4j.query.algebra._
+import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
+import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
 
 import scala.jdk.CollectionConverters._
 
@@ -49,7 +33,11 @@ object Interpreter {
     }
 
     def matches(value: Value): Boolean = {
-      v.getValue == value
+      if (v.hasValue) {
+        v.getValue == value
+      } else {
+        true
+      }
     }
   }
 
@@ -60,10 +48,19 @@ object Interpreter {
       val subject = statementPattern.getSubjectVar
       val predicate = statementPattern.getPredicateVar
       val `object` = statementPattern.getObjectVar
-      val graphMatches = graph != null && graph.matches(stmt.getContext)
-      val tripleMatches = subject.matches(stmt.getSubject) && predicate.matches(
-        stmt.getPredicate
-      ) && `object`.matches(stmt.getObject)
+      val graphMatches = {
+        val graphIsNull = (stmt.getContext == null && graph == null)
+        val graphIsEqual = (graph != null) && graph.matches(stmt.getContext)
+        graphIsNull || graphIsEqual
+      }
+      val tripleMatches = {
+        val subjectMatches = subject.matches(stmt.getSubject)
+        val predicateMatches = predicate.matches(
+          stmt.getPredicate
+        )
+        val objectMatches = `object`.matches(stmt.getObject)
+        subjectMatches && predicateMatches && objectMatches
+      }
       graphMatches && tripleMatches
     }
 
@@ -117,15 +114,18 @@ object Interpreter {
       extends AnyVal {
     def executeSparql(
         query: String
-    )(implicit sc: ScioContext): SCollection[ResultSet] = {
+    ): SCollection[ResultSet] = {
       val parsedQuery = parseSparql(query)
-      processOperation(col)(parsedQuery.getTupleExpr)
+      col.transform("Performing SPARQL Query") { c =>
+        processOperation(c)(parsedQuery.getTupleExpr)
+      }
     }
   }
 
   def processOperation(fullDataset: SCollection[Statement])(
       tupleExpr: TupleExpr
-  )(implicit sc: ScioContext): SCollection[ResultSet] = {
+  ): SCollection[ResultSet] = {
+    val sc = fullDataset.context
     tupleExpr match {
       case statementPattern: StatementPattern =>
         fullDataset

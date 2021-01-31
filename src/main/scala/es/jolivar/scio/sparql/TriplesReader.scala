@@ -17,16 +17,16 @@ import scala.util.Using
 
 object TriplesIO {
   case class ReadParams(
-      pathPattern: String,
       compression: Compression = Compression.AUTO
   )
   case class WriteParams(
-      folderPath: String,
       compression: Compression = Compression.GZIP
   )
 }
 
-class TriplesIO extends ScioIO[Statement] with Serializable {
+final case class TriplesIO(path: String)
+    extends ScioIO[Statement]
+    with Serializable {
   override type ReadP = ReadParams
   override type WriteP = WriteParams
   override val tapT: TapT[Statement] = EmptyTapOf[Statement]
@@ -35,7 +35,7 @@ class TriplesIO extends ScioIO[Statement] with Serializable {
       sc: ScioContext,
       params: ReadP
   ): SCollection[Statement] = {
-    val getFiles = FileIO.`match`().filepattern(params.pathPattern)
+    val getFiles = FileIO.`match`().filepattern(path)
     val readFiles = FileIO.readMatches().withCompression(params.compression)
     sc.customInput("Match Triple Files", getFiles)
       .applyTransform(readFiles)
@@ -78,9 +78,9 @@ class TriplesIO extends ScioIO[Statement] with Serializable {
 }
 
 object TriplesReader {
-  def readFiles(
-      path: String
-  )(implicit sc: ScioContext): SCollection[Statement] = {
-    sc.read(new TriplesIO())(TriplesIO.ReadParams(path))
+  implicit class ScioContextExts(val sc: ScioContext) extends AnyVal {
+    def readTriples(path: String): SCollection[Statement] = {
+      sc.read(new TriplesIO(path))(TriplesIO.ReadParams(Compression.AUTO))
+    }
   }
 }
