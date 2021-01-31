@@ -11,14 +11,7 @@ trait SparqlPipelineTest extends PipelineSpec {
       query: String
   ): Unit = {
     val (dataset, repo) =
-      Utils.getDatasetAndRepo("union.ttl", RDFFormat.TURTLE)
-    val query =
-      """
-        |PREFIX dc10:  <http://purl.org/dc/elements/1.0/>
-        |PREFIX dc11:  <http://purl.org/dc/elements/1.1/>
-        |
-        |SELECT ?title
-        |WHERE  { { ?book dc10:title  ?title } UNION { ?book dc11:title  ?title } }""".stripMargin
+      Utils.getDatasetAndRepo(resourceFile, rdfFormat)
     val results = repo.executeSparql(query).map(_.toString())
     JobTest[SPARQLTestPipeline.type]
       .args(

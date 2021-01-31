@@ -17,7 +17,7 @@ class ValuesTest extends SparqlPipelineTest {
     testSparql("values.ttl", RDFFormat.TURTLE, query)
   }
 
-  it should "work correctly for case #2" in {
+  it should "work correctly for case #2 with UNDEF" in {
     val query =
       """
         |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
