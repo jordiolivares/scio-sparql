@@ -8,6 +8,7 @@ import org.eclipse.rdf4j.query.algebra._
 import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
 import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
 import ValueEvaluators._
+import org.eclipse.rdf4j.model.vocabulary.XSD
 import org.eclipse.rdf4j.query.impl.{EmptyBindingSet, MapBindingSet}
 
 import scala.jdk.CollectionConverters._
@@ -291,7 +292,7 @@ object Interpreter {
                   val aggregatedResultSet = new MapBindingSet(1)
                   aggregatedResultSet.addBinding(
                     bindingName,
-                    vf.createLiteral(aggregatedCount)
+                    vf.createLiteral(aggregatedCount.toString, XSD.INTEGER)
                       .asInstanceOf[Value]
                   )
                   resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
