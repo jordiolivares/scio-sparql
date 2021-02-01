@@ -27,13 +27,13 @@ object Utils {
   }
 
   implicit class RepositoryExt(val repo: Repository) extends AnyVal {
-    def executeSparql(query: String): List[List[Value]] = {
+    def executeSparql(query: String): List[List[(String, Value)]] = {
       Using.Manager { use =>
         val conn = use(repo.getConnection)
         val results = use(conn.prepareTupleQuery(query).evaluate())
         results.asScala
           .map(
-            _.asScala.toList.sortBy(_.getName).map(x => x.getValue)
+            _.asScala.toList.sortBy(_.getName).map(x => x.getName -> x.getValue)
           )
           .toList
       }.get

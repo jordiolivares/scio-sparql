@@ -7,14 +7,14 @@ import org.eclipse.rdf4j.query.algebra.MathExpr.MathOp
 import org.eclipse.rdf4j.query.algebra._
 import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
 import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
-
 import ValueEvaluators._
+import org.eclipse.rdf4j.query.impl.{EmptyBindingSet, MapBindingSet}
 
 import scala.jdk.CollectionConverters._
 
 object Interpreter {
-  type ResultSet = Map[String, Value]
-  private val EMPTY_RESULT_SET: ResultSet = Map()
+  type ResultSet = BindingSet
+  private val EMPTY_RESULT_SET: ResultSet = EmptyBindingSet.getInstance()
   private type Bindings = List[String]
 
   private val vf = SimpleValueFactory.getInstance()
@@ -24,10 +24,36 @@ object Interpreter {
       valueExpr match {
         case varExpr: Var if varExpr.hasValue =>
           varExpr.getName -> Some(varExpr.getValue)
-        case varExpr: Var => varExpr.getName -> resultSet.get(varExpr.getName)
+        case varExpr: Var =>
+          varExpr.getName -> Option(resultSet.getValue(varExpr.getName))
         case sum: Sum     => evaluateValueExpr(sum.getArg)
         case count: Count => evaluateValueExpr(count.getArg)
       }
+    }
+
+    def ++(other: ResultSet): ResultSet = {
+      val result = new MapBindingSet(other.size() + resultSet.size())
+      resultSet
+        .iterator()
+        .forEachRemaining(x => {
+          result.addBinding(x)
+        })
+      other
+        .iterator()
+        .forEachRemaining(x => {
+          result.addBinding(x)
+        })
+      result
+    }
+
+    def filter(f: (String, Value) => Boolean): BindingSet = {
+      val filteredResultSet = new MapBindingSet()
+      resultSet
+        .iterator()
+        .asScala
+        .filter(x => f(x.getName, x.getValue))
+        .foreach(x => filteredResultSet.addBinding(x))
+      filteredResultSet
     }
   }
 
@@ -83,20 +109,32 @@ object Interpreter {
     }
 
     def convertToResultSet(stmt: Statement): ResultSet = {
-      var resultSet: ResultSet = Map()
+      val resultSet = new MapBindingSet()
       if (!statementPattern.getSubjectVar.hasValue) {
-        resultSet += statementPattern.getSubjectVar.getName -> stmt.getSubject
+        resultSet.addBinding(
+          statementPattern.getSubjectVar.getName,
+          stmt.getSubject
+        )
       }
       if (!statementPattern.getPredicateVar.hasValue) {
-        resultSet += statementPattern.getPredicateVar.getName -> stmt.getPredicate
+        resultSet.addBinding(
+          statementPattern.getPredicateVar.getName,
+          stmt.getPredicate
+        )
       }
       if (!statementPattern.getObjectVar.hasValue) {
-        resultSet += statementPattern.getObjectVar.getName -> stmt.getObject
+        resultSet.addBinding(
+          statementPattern.getObjectVar.getName,
+          stmt.getObject
+        )
       }
       if (
         statementPattern.getContextVar != null && !statementPattern.getContextVar.hasValue
       ) {
-        resultSet += statementPattern.getContextVar.getName -> stmt.getContext
+        resultSet.addBinding(
+          statementPattern.getContextVar.getName,
+          stmt.getContext
+        )
       }
       resultSet
     }
@@ -104,7 +142,7 @@ object Interpreter {
 
   implicit class BindingsExt(val bindings: Bindings) extends AnyVal {
     def getBindingsOf(resultSet: ResultSet): List[Option[Value]] = {
-      bindings.map(k => resultSet.get(k))
+      bindings.map(k => Option(resultSet.getValue(k)))
     }
 
     def getBindingsForKeying(resultSet: ResultSet): List[Option[String]] = {
@@ -113,11 +151,7 @@ object Interpreter {
   }
 
   implicit class BindingSetExt(val bindingSet: BindingSet) extends AnyVal {
-    def toResultSet: ResultSet = {
-      bindingSet.asScala.map { binding =>
-        binding.getName -> binding.getValue
-      }.toMap
-    }
+    def toResultSet: ResultSet = bindingSet
   }
 
   def parseSparql(query: String): ParsedTupleQuery = {
@@ -254,11 +288,13 @@ object Interpreter {
               }
               countedPerKey.mapValues {
                 case (resultSet, aggregatedCount) =>
-                  resultSet -> Map(
-                    bindingName -> vf
-                      .createLiteral(aggregatedCount)
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(
+                    bindingName,
+                    vf.createLiteral(aggregatedCount)
                       .asInstanceOf[Value]
                   )
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
               }
             case sum: Sum =>
               def reductionFunction(
@@ -291,9 +327,9 @@ object Interpreter {
               }
               summedPerKey.mapValues {
                 case (resultSet, aggregatedLiteral) =>
-                  resultSet -> Map(
-                    bindingName -> aggregatedLiteral.asInstanceOf[Value]
-                  )
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
               }
           }
           resultsPerKey
@@ -309,7 +345,7 @@ object Interpreter {
           .map {
             case (resultSet, value) =>
               val groupingBindings =
-                resultSet.filter(x => bindingsToGroupBy.contains(x._1))
+                resultSet.filter((x, _) => bindingsToGroupBy.contains(x))
               groupingBindings ++ value
           }
       case bindingSetAssignment: BindingSetAssignment =>
@@ -321,9 +357,16 @@ object Interpreter {
         val extraValues = extension.getElements.asScala.map(_.getExpr)
         results.map { resultSet =>
           val extensionValues =
-            extraValues.map(resultSet.evaluateValueExpr).collect {
-              case k -> Some(v) => k -> v
-            }
+            extraValues
+              .map(resultSet.evaluateValueExpr)
+              .collect {
+                case k -> Some(v) => k -> v
+              }
+              .foldLeft(new MapBindingSet()) {
+                case (acc, (name, value)) =>
+                  acc.addBinding(name, value)
+                  acc
+              }
           resultSet ++ extensionValues
         }
     }

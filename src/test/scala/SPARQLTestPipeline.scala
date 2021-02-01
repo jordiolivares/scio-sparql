@@ -24,9 +24,11 @@ object SPARQLTestPipeline {
     sc.readTriples(inFile)
       .executeSparql(query)
       .map { x =>
-        x.toList
-          .sortBy(m => m._1)
-          .map(m => m._2)
+        x.iterator()
+          .asScala
+          .toList
+          .sortBy(m => m.getName)
+          .map(m => (m.getName, m.getValue))
       }
       .saveAsTextFile(outFile)
     sc.run()
