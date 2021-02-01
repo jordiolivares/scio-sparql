@@ -9,3 +9,9 @@
 :org2 :affiliates :auth3 .
 :auth3 :writesBook :book4 .
 :book4 :price 7 .
+
+@prefix : <http://example.com/data/#> .
+
+:x :p 1, 2, 3, 4 .
+:y :p 1, _:b2, 3, 4 .
+:z :p 1.0, 2.0, 3.0, 4 .

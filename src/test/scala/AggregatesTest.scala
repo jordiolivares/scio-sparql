@@ -25,4 +25,16 @@ class AggregatesTest extends SparqlPipelineTest {
         |} GROUP BY ?auth""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work with a MIN" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?g (MIN(?p) AS ?avg)
+        |WHERE {
+        |  ?g :p ?p .
+        |}
+        |GROUP BY ?g""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
 }

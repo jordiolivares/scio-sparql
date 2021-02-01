@@ -332,6 +332,37 @@ object Interpreter {
                   aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
                   resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
               }
+            case min: Min =>
+              def reductionFunction(
+                  left: (ResultSet, Value),
+                  right: (ResultSet, Value)
+              ) = {
+                left._1 -> left._2.min(right._2)
+              }
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(min.getArg)
+                  )
+                  .collect {
+                    case (key, resultSet -> (_ -> Some(literal))) =>
+                      key -> (resultSet -> literal)
+                  }
+              val minPerKey = evaluatedExpr
+                .map {
+                  case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                }
+                .reduceByKey(reductionFunction)
+                .map {
+                  case ((key, _), pair) => key -> pair
+                }
+                .reduceByKey(reductionFunction)
+              minPerKey.mapValues {
+                case (resultSet, aggregatedLiteral) =>
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+              }
           }
           resultsPerKey
         }
