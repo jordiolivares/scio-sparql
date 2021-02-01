@@ -26,6 +26,7 @@ object Interpreter {
           varExpr.getName -> Some(varExpr.getValue)
         case varExpr: Var => varExpr.getName -> resultSet.get(varExpr.getName)
         case sum: Sum     => evaluateValueExpr(sum.getArg)
+        case count: Count => evaluateValueExpr(count.getArg)
       }
     }
   }
@@ -217,29 +218,55 @@ object Interpreter {
         val groupElems = group.getGroupElements.asScala.map { groupElem =>
           val bindingName = groupElem.getName
           val resultsPerKey = groupElem.getOperator match {
-//            case count: Count =>
-//              val evaluatedExpr =
-//                keyedResults
-//                  .mapValues(_.evaluateValueExpr(count.getArg))
-//                  .filterValues(_._2.isDefined)
-//                  .mapValues(_._2.get)
-//              val countedPerKey = if (!count.isDistinct) {
-//                evaluatedExpr.countByKey
-//              } else {
-//                evaluatedExpr
-//                  .map {
-//                    case (k, v) => (k, v.toString) -> v
-//                  }
-//                  .countByKey
-//                  .map {
-//                    case ((k, _), num) => k -> num
-//                  }
-//                  .sumByKey
-//              }
-//              countedPerKey.mapValues(x =>
-//                Map(bindingName -> vf.createLiteral(x).asInstanceOf[Value])
-//              )
+            case count: Count =>
+              def reductionFunction(
+                  left: (ResultSet, Int),
+                  right: (ResultSet, Int)
+              ) = {
+                left._1 -> (left._2 + right._2)
+              }
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(count.getArg)
+                  )
+                  .collect {
+                    case (key, resultSet -> (_ -> Some(value))) =>
+                      key -> (resultSet -> value)
+                  }
+              val countedPerKey = if (!count.isDistinct) {
+                evaluatedExpr
+                  .mapValues {
+                    case (resultSet, _) => resultSet -> 1
+                  }
+                  .reduceByKey(reductionFunction)
+              } else {
+                evaluatedExpr
+                  .map {
+                    case (k, (resultSet, value)) =>
+                      (k, value.toString) -> (resultSet -> 1)
+                  }
+                  .reduceByKey(reductionFunction)
+                  .map {
+                    case ((k, _), pair) => k -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+              }
+              countedPerKey.mapValues {
+                case (resultSet, aggregatedCount) =>
+                  resultSet -> Map(
+                    bindingName -> vf
+                      .createLiteral(aggregatedCount)
+                      .asInstanceOf[Value]
+                  )
+              }
             case sum: Sum =>
+              def reductionFunction(
+                  left: (ResultSet, Literal),
+                  right: (ResultSet, Literal)
+              ) = {
+                left._1 -> (left._2 + right._2)
+              }
               val evaluatedExpr =
                 keyedResults
                   .mapValues(resultSet =>
@@ -250,35 +277,17 @@ object Interpreter {
                       key -> (resultSet -> literal.asInstanceOf[Literal])
                   }
               val summedPerKey = if (!sum.isDistinct) {
-                evaluatedExpr.reduceByKey {
-                  case (
-                        (originalBindings, evaluatedExpr1),
-                        (_, evaluatedExpr2)
-                      ) =>
-                    originalBindings -> (evaluatedExpr1 + evaluatedExpr2)
-                }
+                evaluatedExpr.reduceByKey(reductionFunction)
               } else {
                 evaluatedExpr
                   .map {
                     case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
                   }
-                  .reduceByKey {
-                    case (
-                          (originalBindings, evaluatedExpr1),
-                          (_, evaluatedExpr2)
-                        ) =>
-                      originalBindings -> (evaluatedExpr1 + evaluatedExpr2)
-                  }
+                  .reduceByKey(reductionFunction)
                   .map {
                     case ((key, _), pair) => key -> pair
                   }
-                  .reduceByKey {
-                    case (
-                          (originalBindings, evaluatedExpr1),
-                          (_, evaluatedExpr2)
-                        ) =>
-                      originalBindings -> (evaluatedExpr1 + evaluatedExpr2)
-                  }
+                  .reduceByKey(reductionFunction)
               }
               summedPerKey.mapValues {
                 case (resultSet, aggregatedLiteral) =>
