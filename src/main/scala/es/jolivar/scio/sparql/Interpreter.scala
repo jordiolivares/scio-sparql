@@ -226,7 +226,19 @@ object Interpreter {
         }
       case leftJoin: LeftJoin =>
         val leftDataset = processOperation(fullDataset)(leftJoin.getLeftArg)
-        val rightDataset = processOperation(fullDataset)(leftJoin.getRightArg)
+        val rightDataset = {
+          val rightData = processOperation(fullDataset)(leftJoin.getRightArg)
+          if (leftJoin.hasCondition) {
+            rightData.filter { resultSet =>
+              resultSet
+                .evaluateValueExpr(leftJoin.getCondition)
+                .asInstanceOf[Literal]
+                .booleanValue()
+            }
+          } else {
+            rightData
+          }
+        }
         val leftBindings = leftJoin.getLeftArg.getBindingNames.asScala
         val rightBindings = leftJoin.getRightArg.getBindingNames.asScala
         val commonBindings =
@@ -433,6 +445,14 @@ object Interpreter {
                   acc
               }
           resultSet ++ extensionValues
+        }
+      case filter: Filter =>
+        val results = processOperation(fullDataset)(filter.getArg)
+        results.filter { resultSet =>
+          resultSet
+            .evaluateValueExpr(filter.getCondition)
+            .asInstanceOf[Literal]
+            .booleanValue()
         }
     }
     results.tap { resultSet =>
