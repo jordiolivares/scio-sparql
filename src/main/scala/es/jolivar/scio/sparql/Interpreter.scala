@@ -47,11 +47,16 @@ object Interpreter {
   }
 
   implicit class ResultSetExt(val resultSet: ResultSet) extends AnyVal {
-    def evaluateValueExpr(valueExpr: ValueExpr): Value = {
+    def evaluateValueExpr(valueExpr: ValueExpr): Option[Value] = {
       valueExpr match {
         case operator: AbstractAggregateOperator =>
           evaluateValueExpr(operator.getArg)
-        case _ => evaluator.evaluate(valueExpr, resultSet)
+        case _ =>
+          try {
+            Some(evaluator.evaluate(valueExpr, resultSet))
+          } catch {
+            case ex: Throwable => None
+          }
       }
     }
 
@@ -232,8 +237,10 @@ object Interpreter {
             rightData.filter { resultSet =>
               resultSet
                 .evaluateValueExpr(leftJoin.getCondition)
-                .asInstanceOf[Literal]
-                .booleanValue()
+                .exists(
+                  _.asInstanceOf[Literal]
+                    .booleanValue()
+                )
             }
           } else {
             rightData
@@ -272,7 +279,6 @@ object Interpreter {
         val leftDataset = processOperation(fullDataset)(union.getLeftArg)
         val rightDataset = processOperation(fullDataset)(union.getRightArg)
         leftDataset.union(rightDataset)
-      // TODO: Implement Filter
       case distinct: Distinct =>
         val results = processOperation(fullDataset)(distinct.getArg)
         val bindings = distinct.getBindingNames.asScala.toList
@@ -334,10 +340,18 @@ object Interpreter {
               }
             case sum: Sum =>
               def reductionFunction(
-                  left: (ResultSet, Literal),
-                  right: (ResultSet, Literal)
+                  left: (ResultSet, Option[Literal]),
+                  right: (ResultSet, Option[Literal])
               ) = {
-                left._1 -> (left._2 + right._2)
+                (left, right) match {
+                  case ((resultSet, Some(x)), (_, Some(y))) =>
+                    try {
+                      resultSet -> Some(x + y)
+                    } catch {
+                      case ex: Throwable =>
+                        resultSet -> None
+                    }
+                }
               }
               val evaluatedExpr =
                 keyedResults
@@ -345,8 +359,8 @@ object Interpreter {
                     resultSet -> resultSet.evaluateValueExpr(sum.getArg)
                   )
                   .collect {
-                    case (key, resultSet -> literal) =>
-                      key -> (resultSet -> literal.asInstanceOf[Literal])
+                    case (key, resultSet -> Some(literal: Literal)) =>
+                      key -> (resultSet -> Option(literal))
                   }
               val summedPerKey = if (!sum.isDistinct) {
                 evaluatedExpr.reduceByKey(reductionFunction)
@@ -362,17 +376,29 @@ object Interpreter {
                   .reduceByKey(reductionFunction)
               }
               summedPerKey.mapValues {
-                case (resultSet, aggregatedLiteral) =>
+                case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
                   aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
                   resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+                case (resultSet, _) =>
+                  resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
+
               }
             case min: Min =>
               def reductionFunction(
-                  left: (ResultSet, Value),
-                  right: (ResultSet, Value)
+                  left: (ResultSet, Option[Value]),
+                  right: (ResultSet, Option[Value])
               ) = {
-                left._1 -> left._2.min(right._2)
+                (left, right) match {
+                  case ((resultSet, Some(x)), (_, Some(y))) =>
+                    try {
+                      resultSet -> Some(x.min(y))
+                    } catch {
+                      case ex: Throwable =>
+                        resultSet -> None
+                    }
+                  case ((resultSet, _), _) => resultSet -> None
+                }
               }
               val evaluatedExpr =
                 keyedResults
@@ -393,10 +419,12 @@ object Interpreter {
                 }
                 .reduceByKey(reductionFunction)
               minPerKey.mapValues {
-                case (resultSet, aggregatedLiteral) =>
+                case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
                   aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
                   resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+                case (resultSet, _) =>
+                  resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
               }
           }
           resultsPerKey
@@ -440,9 +468,10 @@ object Interpreter {
                 exElem.getName -> resultSet.evaluateValueExpr(exElem.getExpr)
               )
               .foldLeft(new MapBindingSet()) {
-                case (acc, (name, value)) =>
+                case (acc, (name, Some(value))) =>
                   acc.addBinding(name, value)
                   acc
+                case (acc, _) => acc
               }
           resultSet ++ extensionValues
         }
@@ -451,8 +480,7 @@ object Interpreter {
         results.filter { resultSet =>
           resultSet
             .evaluateValueExpr(filter.getCondition)
-            .asInstanceOf[Literal]
-            .booleanValue()
+            .exists(_.asInstanceOf[Literal].booleanValue())
         }
     }
     results.tap { resultSet =>

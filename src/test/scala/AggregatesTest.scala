@@ -30,11 +30,22 @@ class AggregatesTest extends SparqlPipelineTest {
     val query =
       """
         |PREFIX : <http://example.com/data/#>
-        |SELECT ?g (MIN(?p) AS ?avg)
+        |SELECT ?g (MIN(?p) AS ?min)
         |WHERE {
         |  ?g :p ?p .
         |}
         |GROUP BY ?g""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
+
+  it should "work with a complex MIN" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (MIN(?y) * 2 AS ?min)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
 }
