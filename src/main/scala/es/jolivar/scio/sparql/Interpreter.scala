@@ -1,15 +1,25 @@
 package es.jolivar.scio.sparql
 
 import com.spotify.scio.values.SCollection
+import es.jolivar.scio.sparql.ValueEvaluators._
+import org.eclipse.rdf4j.common.iteration.CloseableIteration
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory
-import org.eclipse.rdf4j.model.{IRI, Literal, Resource, Statement, Value}
-import org.eclipse.rdf4j.query.algebra.MathExpr.MathOp
-import org.eclipse.rdf4j.query.algebra._
-import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
-import org.eclipse.rdf4j.query.{BindingSet, QueryLanguage}
-import ValueEvaluators._
 import org.eclipse.rdf4j.model.vocabulary.XSD
+import org.eclipse.rdf4j.model._
+import org.eclipse.rdf4j.query.algebra._
+import org.eclipse.rdf4j.query.algebra.evaluation.TripleSource
+import org.eclipse.rdf4j.query.algebra.evaluation.federation.{
+  FederatedService,
+  FederatedServiceResolver
+}
+import org.eclipse.rdf4j.query.algebra.evaluation.impl.StrictEvaluationStrategy
 import org.eclipse.rdf4j.query.impl.{EmptyBindingSet, MapBindingSet}
+import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
+import org.eclipse.rdf4j.query.{
+  BindingSet,
+  QueryEvaluationException,
+  QueryLanguage
+}
 
 import scala.jdk.CollectionConverters._
 
@@ -19,16 +29,29 @@ object Interpreter {
   private type Bindings = List[String]
 
   private val vf = SimpleValueFactory.getInstance()
+  private val evaluator = {
+    val dummyResolver = new FederatedServiceResolver {
+      override def getService(serviceUrl: String): FederatedService = ???
+    }
+    val emptyTripleSource = new TripleSource {
+      override def getStatements(
+          subj: Resource,
+          pred: IRI,
+          obj: Value,
+          contexts: Resource*
+      ): CloseableIteration[_ <: Statement, QueryEvaluationException] = ???
+
+      override def getValueFactory: ValueFactory = vf
+    }
+    new StrictEvaluationStrategy(emptyTripleSource, dummyResolver)
+  }
 
   implicit class ResultSetExt(val resultSet: ResultSet) extends AnyVal {
-    def evaluateValueExpr(valueExpr: ValueExpr): (String, Option[Value]) = {
+    def evaluateValueExpr(valueExpr: ValueExpr): Value = {
       valueExpr match {
-        case varExpr: Var if varExpr.hasValue =>
-          varExpr.getName -> Some(varExpr.getValue)
-        case varExpr: Var =>
-          varExpr.getName -> Option(resultSet.getValue(varExpr.getName))
-        case sum: Sum     => evaluateValueExpr(sum.getArg)
-        case count: Count => evaluateValueExpr(count.getArg)
+        case operator: AbstractAggregateOperator =>
+          evaluateValueExpr(operator.getArg)
+        case _ => evaluator.evaluate(valueExpr, resultSet)
       }
     }
 
@@ -266,7 +289,7 @@ object Interpreter {
                     resultSet -> resultSet.evaluateValueExpr(count.getArg)
                   )
                   .collect {
-                    case (key, resultSet -> (_ -> Some(value))) =>
+                    case (key, resultSet -> value) =>
                       key -> (resultSet -> value)
                   }
               val countedPerKey = if (!count.isDistinct) {
@@ -310,7 +333,7 @@ object Interpreter {
                     resultSet -> resultSet.evaluateValueExpr(sum.getArg)
                   )
                   .collect {
-                    case (key, resultSet -> (_ -> Some(literal))) =>
+                    case (key, resultSet -> literal) =>
                       key -> (resultSet -> literal.asInstanceOf[Literal])
                   }
               val summedPerKey = if (!sum.isDistinct) {
@@ -345,7 +368,7 @@ object Interpreter {
                     resultSet -> resultSet.evaluateValueExpr(min.getArg)
                   )
                   .collect {
-                    case (key, resultSet -> (_ -> Some(literal))) =>
+                    case (key, resultSet -> literal) =>
                       key -> (resultSet -> literal)
                   }
               val minPerKey = evaluatedExpr
@@ -386,14 +409,24 @@ object Interpreter {
         sc.parallelize(bindings)
       case extension: Extension =>
         val results = processOperation(fullDataset)(extension.getArg)
-        val extraValues = extension.getElements.asScala.map(_.getExpr)
+        val extraValues = extension.getArg match {
+          // Special case: RDF4J wraps the group by with an Extension that does work already done in the Group case.
+          // This removes the elements already defined in the Group operator so that they don't crash the interpreter
+          case group: Group =>
+            val elementsToRemove =
+              group.getGroupElements.asScala.toList.map(_.getOperator)
+            val extensionElements = extension.getElements.asScala.toList
+            extensionElements.filterNot { elem =>
+              elementsToRemove.exists(op => elem.getExpr.equals(op))
+            }
+          case _ => extension.getElements.asScala
+        }
         results.map { resultSet =>
           val extensionValues =
             extraValues
-              .map(resultSet.evaluateValueExpr)
-              .collect {
-                case k -> Some(v) => k -> v
-              }
+              .map(exElem =>
+                exElem.getName -> resultSet.evaluateValueExpr(exElem.getExpr)
+              )
               .foldLeft(new MapBindingSet()) {
                 case (acc, (name, value)) =>
                   acc.addBinding(name, value)
