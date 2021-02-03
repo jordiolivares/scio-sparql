@@ -6,3 +6,4 @@
 :book1  ns:price  42 .
 :book2  dc:title  "The Semantic Web" .
 :book2  ns:price  23 .
+:book3  dc:title "Priceless SPARQL" .

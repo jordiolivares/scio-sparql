@@ -3,9 +3,9 @@ package es.jolivar.scio.sparql
 import com.spotify.scio.values.SCollection
 import es.jolivar.scio.sparql.ValueEvaluators._
 import org.eclipse.rdf4j.common.iteration.CloseableIteration
+import org.eclipse.rdf4j.model._
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory
 import org.eclipse.rdf4j.model.vocabulary.XSD
-import org.eclipse.rdf4j.model._
 import org.eclipse.rdf4j.query.algebra._
 import org.eclipse.rdf4j.query.algebra.evaluation.TripleSource
 import org.eclipse.rdf4j.query.algebra.evaluation.federation.{
@@ -183,6 +183,18 @@ object Interpreter {
     def toResultSet: ResultSet = bindingSet
   }
 
+  implicit class TupleExprExt(val expr: TupleExpr) extends AnyVal {
+    def getJoinBindings: Set[String] =
+      expr match {
+        case ext: Extension =>
+          val bindings = ext.getAssuredBindingNames.asScala.toSet
+          ext.getElements.asScala.foldLeft(bindings) { (acc, x) =>
+            acc + x.getName
+          }
+        case _ => expr.getAssuredBindingNames.asScala.toSet
+      }
+  }
+
   def parseSparql(query: String): ParsedTupleQuery = {
     QueryParserUtil.parseTupleQuery(QueryLanguage.SPARQL, query, null)
   }
@@ -199,6 +211,24 @@ object Interpreter {
     }
   }
 
+  def prepareDataJoin(
+      fullDataset: SCollection[Statement]
+  )(leftExpr: TupleExpr, rightExpr: TupleExpr): (
+      SCollection[(List[Option[String]], ResultSet)],
+      SCollection[(List[Option[String]], ResultSet)]
+  ) = {
+    val leftBindings = leftExpr.getJoinBindings
+    val rightBindings = rightExpr.getJoinBindings
+    val commonBindings =
+      (leftBindings & rightBindings).toList // Deterministic order when iterating
+    val leftDataset = processOperation(fullDataset)(leftExpr)
+    val rightDataset = processOperation(fullDataset)(rightExpr)
+    val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
+    val keyedRight =
+      rightDataset.keyBy(commonBindings.getBindingsForKeying)
+    (keyedLeft, keyedRight)
+  }
+
   def processOperation(fullDataset: SCollection[Statement])(
       tupleExpr: TupleExpr
   ): SCollection[ResultSet] = {
@@ -212,15 +242,8 @@ object Interpreter {
           .filter(statementPattern.matches)
           .map(statementPattern.convertToResultSet)
       case join: Join =>
-        val leftDataset = processOperation(fullDataset)(join.getLeftArg)
-        val rightDataset = processOperation(fullDataset)(join.getRightArg)
-        val leftBindings = join.getLeftArg.getBindingNames.asScala
-        val rightBindings = join.getRightArg.getBindingNames.asScala
-        val commonBindings =
-          (leftBindings & rightBindings).toList // Deterministic order when iterating
-        val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
-        val keyedRight =
-          rightDataset.keyBy(commonBindings.getBindingsForKeying)
+        val (keyedLeft, keyedRight) =
+          prepareDataJoin(fullDataset)(join.getLeftArg, join.getRightArg)
         keyedLeft.join(keyedRight).values.map {
           case (left, right) =>
             left ++ right
@@ -242,8 +265,8 @@ object Interpreter {
             rightData
           }
         }
-        val leftBindings = leftJoin.getLeftArg.getBindingNames.asScala
-        val rightBindings = leftJoin.getRightArg.getBindingNames.asScala
+        val leftBindings = leftJoin.getLeftArg.getJoinBindings
+        val rightBindings = leftJoin.getRightArg.getJoinBindings
         val commonBindings =
           (leftBindings & rightBindings).toList // Deterministic order when iterating
         val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
@@ -466,12 +489,31 @@ object Interpreter {
           resultSet ++ extensionValues
         }
       case filter: Filter =>
-        val results = processOperation(fullDataset)(filter.getArg)
-        results.filter { resultSet =>
-          resultSet
-            .evaluateValueExpr(filter.getCondition)
-            .exists(_.asInstanceOf[Literal].booleanValue())
+        filter.getCondition match {
+          case exists: Exists =>
+            val (keyedLeft, keyedRight) =
+              prepareDataJoin(fullDataset)(filter.getArg, exists.getSubQuery)
+            keyedLeft.join(keyedRight).values.collect {
+              case (left, _) =>
+                left
+            }
+          case not: Not if not.getArg.isInstanceOf[Exists] =>
+            val exists = not.getArg.asInstanceOf[Exists]
+            val (keyedLeft, keyedRight) =
+              prepareDataJoin(fullDataset)(filter.getArg, exists.getSubQuery)
+            keyedLeft.leftOuterJoin(keyedRight).values.collect {
+              case (left, None) =>
+                left
+            }
+          case _ =>
+            val results = processOperation(fullDataset)(filter.getArg)
+            results.filter { resultSet =>
+              resultSet
+                .evaluateValueExpr(filter.getCondition)
+                .exists(_.asInstanceOf[Literal].booleanValue())
+            }
         }
+
     }
     results
   }

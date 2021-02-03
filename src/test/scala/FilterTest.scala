@@ -26,4 +26,30 @@ class FilterTest extends SparqlPipelineTest {
         |""".stripMargin
     testSparql("values.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work correctly with EXISTS" in {
+    val query =
+      """
+        |PREFIX  dc:  <http://purl.org/dc/elements/1.1/>
+        |PREFIX  ns:  <http://example.org/ns#>
+        |SELECT  ?title ?price
+        |WHERE   { ?x dc:title ?title .
+        |          FILTER EXISTS { ?x ns:price ?price }
+        |        }
+        |""".stripMargin
+    testSparql("values.ttl", RDFFormat.TURTLE, query)
+  }
+
+  it should "work correctly with NOT EXISTS" in {
+    val query =
+      """
+        |PREFIX  dc:  <http://purl.org/dc/elements/1.1/>
+        |PREFIX  ns:  <http://example.org/ns#>
+        |SELECT  ?title ?price
+        |WHERE   { ?x dc:title ?title .
+        |          FILTER NOT EXISTS { ?x ns:price ?price }
+        |        }
+        |""".stripMargin
+    testSparql("values.ttl", RDFFormat.TURTLE, query)
+  }
 }
