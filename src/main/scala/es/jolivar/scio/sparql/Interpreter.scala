@@ -351,6 +351,7 @@ object Interpreter {
                       case ex: Throwable =>
                         resultSet -> None
                     }
+                  case ((resultSet, _), _) => resultSet -> None
                 }
               }
               val evaluatedExpr =
@@ -483,8 +484,6 @@ object Interpreter {
             .exists(_.asInstanceOf[Literal].booleanValue())
         }
     }
-    results.tap { resultSet =>
-      tupleExpr -> resultSet
-    }
+    results
   }
 }
