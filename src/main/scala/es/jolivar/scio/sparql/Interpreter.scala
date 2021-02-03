@@ -215,19 +215,12 @@ object Interpreter {
         val rightBindings = join.getRightArg.getBindingNames.asScala
         val commonBindings =
           (leftBindings & rightBindings).toList // Deterministic order when iterating
-        if (commonBindings.isEmpty) {
-          leftDataset.cross(rightDataset).map {
-            case (left, right) =>
-              left ++ right
-          }
-        } else {
-          val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
-          val keyedRight =
-            rightDataset.keyBy(commonBindings.getBindingsForKeying)
-          keyedLeft.join(keyedRight).values.map {
-            case (left, right) =>
-              left ++ right
-          }
+        val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
+        val keyedRight =
+          rightDataset.keyBy(commonBindings.getBindingsForKeying)
+        keyedLeft.join(keyedRight).values.map {
+          case (left, right) =>
+            left ++ right
         }
       case leftJoin: LeftJoin =>
         val leftDataset = processOperation(fullDataset)(leftJoin.getLeftArg)
@@ -250,19 +243,12 @@ object Interpreter {
         val rightBindings = leftJoin.getRightArg.getBindingNames.asScala
         val commonBindings =
           (leftBindings & rightBindings).toList // Deterministic order when iterating
-        if (commonBindings.isEmpty) {
-          leftDataset.cross(rightDataset).map {
-            case (left, right) =>
-              left ++ right
-          }
-        } else {
-          val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
-          val keyedRight =
-            rightDataset.keyBy(commonBindings.getBindingsForKeying)
-          keyedLeft.leftOuterJoin(keyedRight).values.map {
-            case (left, right) =>
-              left ++ right.getOrElse(EMPTY_RESULT_SET)
-          }
+        val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
+        val keyedRight =
+          rightDataset.keyBy(commonBindings.getBindingsForKeying)
+        keyedLeft.leftOuterJoin(keyedRight).values.map {
+          case (left, right) =>
+            left ++ right.getOrElse(EMPTY_RESULT_SET)
         }
       case projection: Projection =>
         val results = processOperation(fullDataset)(projection.getArg)
