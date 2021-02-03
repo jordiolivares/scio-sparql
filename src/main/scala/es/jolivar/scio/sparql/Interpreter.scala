@@ -204,6 +204,9 @@ object Interpreter {
   ): SCollection[ResultSet] = {
     val sc = fullDataset.context
     val results = tupleExpr match {
+      case _: SingletonSet =>
+        val bindingSet: BindingSet = new EmptyBindingSet
+        sc.parallelize(Seq(bindingSet))
       case statementPattern: StatementPattern =>
         fullDataset
           .filter(statementPattern.matches)

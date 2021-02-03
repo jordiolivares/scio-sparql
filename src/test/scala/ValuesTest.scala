@@ -35,4 +35,21 @@ class ValuesTest extends SparqlPipelineTest {
         |}""".stripMargin
     testSparql("values.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work correctly when doing a BIND" in {
+    val query =
+      """
+        |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
+        |PREFIX :     <http://example.org/book/> 
+        |PREFIX ns:   <http://example.org/ns#> 
+        |
+        |SELECT ?book ?title ?price
+        |{
+        |   BIND(:book1 as ?book)
+        |   ?book dc:title ?title ;
+        |         ns:price ?hiddenPrice .
+        |   BIND((?hiddenPrice * ?hiddenPrice) as ?price)
+        |}""".stripMargin
+    testSparql("values.ttl", RDFFormat.TURTLE, query)
+  }
 }
