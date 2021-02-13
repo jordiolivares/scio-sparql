@@ -393,9 +393,11 @@ object Interpreter {
                   .mapValues(resultSet =>
                     resultSet -> resultSet.evaluateValueExpr(sum.getArg)
                   )
-                  .collect {
+                  .map {
                     case (key, resultSet -> Some(literal: Literal)) =>
                       key -> (resultSet -> Option(literal))
+                    case (key, resultSet -> _) =>
+                      key -> (resultSet -> None)
                   }
               val summedPerKey = if (!sum.isDistinct) {
                 evaluatedExpr.reduceByKey(reductionFunction)

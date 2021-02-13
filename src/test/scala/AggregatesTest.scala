@@ -48,4 +48,15 @@ class AggregatesTest extends SparqlPipelineTest {
         |} GROUP BY ?x""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work with SUM" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (SUM(?y) * 2 AS ?sum)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
 }
