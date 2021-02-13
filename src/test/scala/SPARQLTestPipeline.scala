@@ -1,6 +1,8 @@
 import com.spotify.scio.ContextAndArgs
 import es.jolivar.scio.sparql.TriplesReader._
 import es.jolivar.scio.sparql.Interpreter._
+import io.circe.syntax.EncoderOps
+import io.circe.generic.auto._
 import org.eclipse.rdf4j.model.Statement
 import org.eclipse.rdf4j.rio.{RDFFormat, Rio}
 
@@ -27,8 +29,10 @@ object SPARQLTestPipeline {
         x.iterator()
           .asScala
           .toList
-          .sortBy(m => m.getName)
-          .map(m => (m.getName, m.getValue))
+          .map(m => (m.getName, Utils.rdf4jValue2OurValue(m.getValue)))
+          .toMap
+          .asJson
+          .noSpaces
       }
       .saveAsTextFile(outFile)
     sc.run()

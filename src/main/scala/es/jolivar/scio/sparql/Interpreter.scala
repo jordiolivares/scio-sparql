@@ -488,7 +488,7 @@ object Interpreter {
                     case (key, resultSet -> literal) =>
                       key -> (resultSet -> literal)
                   }
-              val minPerKey = evaluatedExpr
+              val maxPerKey = evaluatedExpr
                 .map {
                   case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
                 }
@@ -497,7 +497,59 @@ object Interpreter {
                   case ((key, _), pair) => key -> pair
                 }
                 .reduceByKey(reductionFunction)
-              minPerKey.mapValues {
+              maxPerKey.mapValues {
+                case (resultSet, Some(aggregatedLiteral)) =>
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+                case (resultSet, _) =>
+                  resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
+              }
+            case groupConcat: GroupConcat =>
+              val separator =
+                EMPTY_RESULT_SET
+                  .evaluateValueExpr(groupConcat.getSeparator)
+                  .getOrElse(vf.createLiteral(" "))
+              def reductionFunction(
+                  left: (ResultSet, Option[Value]),
+                  right: (ResultSet, Option[Value])
+              ) = {
+                (left, right) match {
+                  case ((resultSet, Some(x)), (_, Some(y))) =>
+                    try {
+                      resultSet -> Some(
+                        ValueEvaluators.concat(
+                          x.castToString,
+                          separator,
+                          y.castToString
+                        )
+                      )
+                    } catch {
+                      case ex: Throwable =>
+                        resultSet -> None
+                    }
+                  case ((resultSet, _), _) => resultSet -> None
+                }
+              }
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(groupConcat.getArg)
+                  )
+                  .map {
+                    case (key, resultSet -> literal) =>
+                      key -> (resultSet -> literal)
+                  }
+              val concatPerKey = evaluatedExpr
+                .map {
+                  case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                }
+                .reduceByKey(reductionFunction)
+                .map {
+                  case ((key, _), pair) => key -> pair
+                }
+                .reduceByKey(reductionFunction)
+              concatPerKey.mapValues {
                 case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
                   aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)

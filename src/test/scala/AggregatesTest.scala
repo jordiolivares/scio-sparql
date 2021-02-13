@@ -70,4 +70,29 @@ class AggregatesTest extends SparqlPipelineTest {
         |} GROUP BY ?x""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work with GROUP_CONCAT" in {
+    import com.spotify.scio.io.TextIO
+    import es.jolivar.scio.sparql.TriplesIO
+    import org.eclipse.rdf4j.rio.RDFFormat
+    import Utils._
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (GROUP_CONCAT(?y; separator=";") AS ?concat)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x""".stripMargin
+    testSparql(
+      "group_by.ttl",
+      RDFFormat.TURTLE,
+      query,
+      resultSet => {
+        resultSet.map {
+          case k -> value =>
+            k -> value.copy(value = value.value.split(";").sorted.mkString(";"))
+        }
+      }
+    )
+  }
 }
