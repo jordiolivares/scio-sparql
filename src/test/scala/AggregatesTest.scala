@@ -59,4 +59,15 @@ class AggregatesTest extends SparqlPipelineTest {
         |} GROUP BY ?x""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work with MAX" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (MAX(?y) * 2 AS ?max)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
 }

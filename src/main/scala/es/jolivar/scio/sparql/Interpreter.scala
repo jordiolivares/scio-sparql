@@ -463,6 +463,48 @@ object Interpreter {
                 case (resultSet, _) =>
                   resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
               }
+            case max: Max =>
+              def reductionFunction(
+                  left: (ResultSet, Option[Value]),
+                  right: (ResultSet, Option[Value])
+              ) = {
+                (left, right) match {
+                  case ((resultSet, Some(x)), (_, Some(y))) =>
+                    try {
+                      resultSet -> Some(x.max(y))
+                    } catch {
+                      case ex: Throwable =>
+                        resultSet -> None
+                    }
+                  case ((resultSet, _), _) => resultSet -> None
+                }
+              }
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(max.getArg)
+                  )
+                  .collect {
+                    case (key, resultSet -> literal) =>
+                      key -> (resultSet -> literal)
+                  }
+              val minPerKey = evaluatedExpr
+                .map {
+                  case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                }
+                .reduceByKey(reductionFunction)
+                .map {
+                  case ((key, _), pair) => key -> pair
+                }
+                .reduceByKey(reductionFunction)
+              minPerKey.mapValues {
+                case (resultSet, Some(aggregatedLiteral)) =>
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+                case (resultSet, _) =>
+                  resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
+              }
           }
           resultsPerKey
         }
