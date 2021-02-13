@@ -72,10 +72,6 @@ class AggregatesTest extends SparqlPipelineTest {
   }
 
   it should "work with GROUP_CONCAT" in {
-    import com.spotify.scio.io.TextIO
-    import es.jolivar.scio.sparql.TriplesIO
-    import org.eclipse.rdf4j.rio.RDFFormat
-    import Utils._
     val query =
       """
         |PREFIX : <http://example.com/data/#>
