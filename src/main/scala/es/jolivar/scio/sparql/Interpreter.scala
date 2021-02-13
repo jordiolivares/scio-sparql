@@ -244,9 +244,20 @@ object Interpreter {
       case join: Join =>
         val (keyedLeft, keyedRight) =
           prepareDataJoin(fullDataset)(join.getLeftArg, join.getRightArg)
-        keyedLeft.join(keyedRight).values.map {
-          case (left, right) =>
-            left ++ right
+        (join.getLeftArg, join.getRightArg) match {
+          case (_: BindingSetAssignment, _) =>
+            keyedRight.hashJoin(keyedLeft).values.map {
+              case (right, left) => left ++ right
+            }
+          case (_, _: BindingSetAssignment) =>
+            keyedLeft.hashJoin(keyedRight).values.map {
+              case (left, right) => left ++ right
+            }
+          case _ =>
+            keyedLeft.join(keyedRight).values.map {
+              case (left, right) =>
+                left ++ right
+            }
         }
       case leftJoin: LeftJoin =>
         val leftDataset = processOperation(fullDataset)(leftJoin.getLeftArg)
@@ -272,9 +283,20 @@ object Interpreter {
         val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
         val keyedRight =
           rightDataset.keyBy(commonBindings.getBindingsForKeying)
-        keyedLeft.leftOuterJoin(keyedRight).values.map {
-          case (left, right) =>
-            left ++ right.getOrElse(EMPTY_RESULT_SET)
+        (leftJoin.getLeftArg, leftJoin.getRightArg) match {
+          case (_: BindingSetAssignment, _) =>
+            keyedRight.hashLeftOuterJoin(keyedLeft).values.map {
+              case (right, left) => left.getOrElse(EMPTY_RESULT_SET) ++ right
+            }
+          case (_, _: BindingSetAssignment) =>
+            keyedLeft.hashLeftOuterJoin(keyedRight).values.map {
+              case (left, right) => left ++ right.getOrElse(EMPTY_RESULT_SET)
+            }
+          case _ =>
+            keyedLeft.leftOuterJoin(keyedRight).values.map {
+              case (left, right) =>
+                left ++ right.getOrElse(EMPTY_RESULT_SET)
+            }
         }
       case projection: Projection =>
         val results = processOperation(fullDataset)(projection.getArg)
