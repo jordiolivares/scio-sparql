@@ -102,4 +102,16 @@ class AggregatesTest extends SparqlPipelineTest {
         |} GROUP BY ?x""".stripMargin
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work with multiple aggregate variables" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?g (AVG(?p) AS ?avg) ((MIN(?p) + MAX(?p)) / 2 AS ?c)
+        |WHERE {
+        |  ?g :p ?p .
+        |}
+        |GROUP BY ?g""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
 }
