@@ -446,15 +446,19 @@ object Interpreter {
                     case (key, resultSet -> literal) =>
                       key -> (resultSet -> literal)
                   }
-              val minPerKey = evaluatedExpr
-                .map {
-                  case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
-                }
-                .reduceByKey(reductionFunction)
-                .map {
-                  case ((key, _), pair) => key -> pair
-                }
-                .reduceByKey(reductionFunction)
+              val minPerKey = if (min.isDistinct) {
+                evaluatedExpr
+                  .map {
+                    case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+                  .map {
+                    case ((key, _), pair) => key -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+              } else {
+                evaluatedExpr.reduceByKey(reductionFunction)
+              }
               minPerKey.mapValues {
                 case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
@@ -488,15 +492,19 @@ object Interpreter {
                     case (key, resultSet -> literal) =>
                       key -> (resultSet -> literal)
                   }
-              val maxPerKey = evaluatedExpr
-                .map {
-                  case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
-                }
-                .reduceByKey(reductionFunction)
-                .map {
-                  case ((key, _), pair) => key -> pair
-                }
-                .reduceByKey(reductionFunction)
+              val maxPerKey = if (max.isDistinct) {
+                evaluatedExpr
+                  .map {
+                    case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+                  .map {
+                    case ((key, _), pair) => key -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+              } else {
+                evaluatedExpr.reduceByKey(reductionFunction)
+              }
               maxPerKey.mapValues {
                 case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
@@ -540,15 +548,19 @@ object Interpreter {
                     case (key, resultSet -> literal) =>
                       key -> (resultSet -> literal)
                   }
-              val concatPerKey = evaluatedExpr
-                .map {
-                  case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
-                }
-                .reduceByKey(reductionFunction)
-                .map {
-                  case ((key, _), pair) => key -> pair
-                }
-                .reduceByKey(reductionFunction)
+              val concatPerKey = if (groupConcat.isDistinct) {
+                evaluatedExpr
+                  .map {
+                    case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+                  .map {
+                    case ((key, _), pair) => key -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+              } else {
+                evaluatedExpr.reduceByKey(reductionFunction)
+              }
               concatPerKey.mapValues {
                 case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
