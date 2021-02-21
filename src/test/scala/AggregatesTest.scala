@@ -91,4 +91,15 @@ class AggregatesTest extends SparqlPipelineTest {
       }
     )
   }
+
+  it should "work with AVG" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (AVG(?y) AS ?avg)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
 }

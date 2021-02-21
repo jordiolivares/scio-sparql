@@ -29,6 +29,8 @@ object Interpreter {
   private type Bindings = List[String]
 
   private val vf = SimpleValueFactory.getInstance()
+  private val LITERAL_ONE = vf.createLiteral(1L)
+
   private val evaluator = {
     val dummyResolver = new FederatedServiceResolver {
       override def getService(serviceUrl: String): FederatedService = ???
@@ -565,6 +567,54 @@ object Interpreter {
                 case (resultSet, Some(aggregatedLiteral)) =>
                   val aggregatedResultSet = new MapBindingSet(1)
                   aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+                case (resultSet, _) =>
+                  resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
+              }
+            case avg: Avg =>
+              def reductionFunction(
+                  left: (ResultSet, Option[AverageHelper]),
+                  right: (ResultSet, Option[AverageHelper])
+              ) = {
+                (left, right) match {
+                  case ((resultSet, Some(x)), (_, Some(y))) =>
+                    resultSet -> (x + y)
+                  case ((resultSet, _), _) => resultSet -> None
+                }
+              }
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(avg.getArg)
+                  )
+                  .collect {
+                    case (key, resultSet -> Some(literal: Literal)) =>
+                      key -> (resultSet -> Some(
+                        AverageHelper(literal, LITERAL_ONE)
+                      ))
+                    case (key, resultSet -> _) =>
+                      key -> (resultSet -> None)
+                  }
+              val avgPerKey = if (avg.isDistinct) {
+                evaluatedExpr
+                  .map {
+                    case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+                  .map {
+                    case ((key, _), pair) => key -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+              } else {
+                evaluatedExpr.reduceByKey(reductionFunction)
+              }
+              avgPerKey.mapValues {
+                case (resultSet, Some(aggregatedLiteral)) =>
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(
+                    bindingName,
+                    aggregatedLiteral.currentValue
+                  )
                   resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
                 case (resultSet, _) =>
                   resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
