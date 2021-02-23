@@ -330,6 +330,50 @@ object Interpreter {
         val groupElems = group.getGroupElements.asScala.map { groupElem =>
           val bindingName = groupElem.getName
           val resultsPerKey = groupElem.getOperator match {
+            case sample: Sample =>
+              def reductionFunction(
+                  left: (ResultSet, Option[Value]),
+                  right: (ResultSet, Option[Value])
+              ) = {
+                (left, right) match {
+                  case ((resultSet, x @ Some(_)), _) =>
+                    resultSet -> x
+                  case (_, (resultSet, y @ Some(_))) =>
+                    resultSet -> y
+                  case (_, (resultSet, _)) =>
+                    resultSet -> None
+                }
+              }
+              val evaluatedExpr =
+                keyedResults
+                  .mapValues(resultSet =>
+                    resultSet -> resultSet.evaluateValueExpr(sample.getArg)
+                  )
+                  .collect {
+                    case (key, resultSet -> literal) =>
+                      key -> (resultSet -> literal)
+                  }
+              val samplePerKey = if (sample.isDistinct) {
+                evaluatedExpr
+                  .map {
+                    case (key, pair @ (_, lit)) => (key, lit.toString) -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+                  .map {
+                    case ((key, _), pair) => key -> pair
+                  }
+                  .reduceByKey(reductionFunction)
+              } else {
+                evaluatedExpr.reduceByKey(reductionFunction)
+              }
+              samplePerKey.mapValues {
+                case (resultSet, Some(aggregatedLiteral)) =>
+                  val aggregatedResultSet = new MapBindingSet(1)
+                  aggregatedResultSet.addBinding(bindingName, aggregatedLiteral)
+                  resultSet -> aggregatedResultSet.asInstanceOf[BindingSet]
+                case (resultSet, _) =>
+                  resultSet -> (new EmptyBindingSet).asInstanceOf[BindingSet]
+              }
             case count: Count =>
               def reductionFunction(
                   left: (ResultSet, Int),

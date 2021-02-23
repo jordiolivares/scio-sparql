@@ -1,3 +1,7 @@
+import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
+import io.circe.{Decoder, Encoder}
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory
+import org.eclipse.rdf4j.model.vocabulary.XSD
 import org.eclipse.rdf4j.model.{
   BNode,
   IRI,
@@ -12,10 +16,22 @@ import org.eclipse.rdf4j.rio.RDFFormat
 import org.eclipse.rdf4j.sail.memory.MemoryStore
 
 import scala.jdk.CollectionConverters._
-import scala.util.Using
+import scala.jdk.OptionConverters._
+import scala.util.{Try, Using}
 
 object Utils {
-  case class Value(value: String, dataType: String)
+  case class Value(value: String, dataType: IRI, language: Option[String])
+
+  object Value {
+    private val vf = SimpleValueFactory.getInstance()
+    implicit val encoderIri: Encoder[IRI] =
+      Encoder[String].contramap(_.stringValue())
+    implicit val decoderIri: Decoder[IRI] =
+      Decoder[String].emapTry(x => Try { vf.createIRI(x) })
+    implicit val encoder: Encoder[Value] = deriveEncoder
+    implicit val decoder: Decoder[Value] = deriveDecoder
+  }
+
   type BindingSet = Map[String, Value]
 
   def getDatasetAndRepo(
@@ -42,10 +58,11 @@ object Utils {
       case literal: Literal =>
         Value(
           stringValue,
-          literal.getDatatype.toString + literal.getLanguage.orElse("")
+          literal.getDatatype,
+          literal.getLanguage.toScala
         )
-      case _: IRI   => Value(stringValue, stringValue)
-      case _: BNode => Value(stringValue, stringValue)
+      case _: IRI   => Value(stringValue, XSD.ANYURI, None)
+      case _: BNode => Value(stringValue, XSD.ANYURI, None)
     }
   }
 

@@ -5,6 +5,9 @@ import org.eclipse.rdf4j.rio.RDFFormat
 import io.circe.parser.decode
 import io.circe.generic.auto._
 import Utils._
+import cats.Eq
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory
+import org.eclipse.rdf4j.model.vocabulary.XSD
 
 trait SparqlPipelineTest extends PipelineSpec {
 
@@ -25,6 +28,18 @@ trait SparqlPipelineTest extends PipelineSpec {
         }
       }
       .map(applyFunctionResults)
+    implicit val eqValue: Eq[Value] = new Eq[Value] {
+      override def eqv(x: Value, y: Value): Boolean = {
+        (x, y) match {
+          case (Value(xVal, XSD.DECIMAL, _), Value(yVal, XSD.DECIMAL, _)) =>
+            BigDecimal(xVal) == BigDecimal(yVal)
+          case _ => x == y
+        }
+      }
+    }
+
+    implicit val eqBindingSet: Eq[BindingSet] =
+      cats.implicits.catsKernelStdEqForMap
     JobTest[SPARQLTestPipeline.type]
       .args(
         s"--query=$query",

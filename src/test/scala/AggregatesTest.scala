@@ -103,6 +103,28 @@ class AggregatesTest extends SparqlPipelineTest {
     testSparql("group_by.ttl", RDFFormat.TURTLE, query)
   }
 
+  it should "work with HAVING" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (MAX(?y) * 2 AS ?max)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x HAVING(MAX(?y) < 4)""".stripMargin
+    testSparql("group_by.ttl", RDFFormat.TURTLE, query)
+  }
+
+  it should "work with SAMPLE" in {
+    val query =
+      """
+        |PREFIX : <http://example.com/data/#>
+        |SELECT ?x (SAMPLE(?y) AS ?sample)
+        |WHERE {
+        |  ?x :p ?y .
+        |} GROUP BY ?x""".stripMargin
+    testSparql("sample.ttl", RDFFormat.TURTLE, query)
+  }
+
   it should "work with multiple aggregate variables" in {
     val query =
       """
