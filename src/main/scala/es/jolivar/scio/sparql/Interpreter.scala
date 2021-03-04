@@ -25,8 +25,7 @@ import org.eclipse.rdf4j.query.{
 import scala.jdk.CollectionConverters._
 
 object Interpreter {
-  type ResultSet = BindingSet
-  private val EMPTY_RESULT_SET: ResultSet = EmptyBindingSet.getInstance()
+  private val EMPTY_RESULT_SET: BindingSet = EmptyBindingSet.getInstance()
   private type Bindings = List[String]
 
   private val vf = SimpleValueFactory.getInstance()
@@ -49,7 +48,8 @@ object Interpreter {
     new StrictEvaluationStrategy(emptyTripleSource, dummyResolver)
   }
 
-  implicit class ResultSetExt(val resultSet: ResultSet) extends AnyVal {
+  private implicit class ResultSetExt(val resultSet: BindingSet)
+      extends AnyVal {
     def evaluateValueExpr(valueExpr: ValueExpr): Option[Value] = {
       valueExpr match {
         case operator: AbstractAggregateOperator =>
@@ -63,7 +63,7 @@ object Interpreter {
       }
     }
 
-    def ++(other: ResultSet): ResultSet = {
+    def ++(other: BindingSet): BindingSet = {
       val result = new MapBindingSet(other.size() + resultSet.size())
       resultSet
         .iterator()
@@ -100,7 +100,7 @@ object Interpreter {
     }
   }
 
-  implicit class VarExt(val v: Var) extends AnyVal {
+  private implicit class VarExt(val v: Var) extends AnyVal {
     def matches(resource: Resource): Boolean = {
       if (v.hasValue) {
         val value = v.getValue
@@ -128,8 +128,9 @@ object Interpreter {
     }
   }
 
-  implicit class StatementPatternExt(val statementPattern: StatementPattern)
-      extends AnyVal {
+  private implicit class StatementPatternExt(
+      val statementPattern: StatementPattern
+  ) extends AnyVal {
     def matches(stmt: Statement): Boolean = {
       val graph = statementPattern.getContextVar
       val subject = statementPattern.getSubjectVar
@@ -151,7 +152,7 @@ object Interpreter {
       graphMatches && tripleMatches
     }
 
-    def convertToResultSet(stmt: Statement): ResultSet = {
+    def convertToResultSet(stmt: Statement): BindingSet = {
       val resultSet = new MapBindingSet()
       if (!statementPattern.getSubjectVar.hasValue) {
         resultSet.addBinding(
@@ -183,21 +184,17 @@ object Interpreter {
     }
   }
 
-  implicit class BindingsExt(val bindings: Bindings) extends AnyVal {
-    def getBindingsOf(resultSet: ResultSet): List[Option[Value]] = {
+  private implicit class BindingsExt(val bindings: Bindings) extends AnyVal {
+    def getBindingsOf(resultSet: BindingSet): List[Option[Value]] = {
       bindings.map(k => Option(resultSet.getValue(k)))
     }
 
-    def getBindingsForKeying(resultSet: ResultSet): List[Option[String]] = {
+    def getBindingsForKeying(resultSet: BindingSet): List[Option[String]] = {
       getBindingsOf(resultSet).map(_.map(_.toString))
     }
   }
 
-  implicit class BindingSetExt(val bindingSet: BindingSet) extends AnyVal {
-    def toResultSet: ResultSet = bindingSet
-  }
-
-  implicit class TupleExprExt(val expr: TupleExpr) extends AnyVal {
+  private implicit class TupleExprExt(val expr: TupleExpr) extends AnyVal {
     def getJoinBindings: Set[String] =
       expr match {
         case ext: Extension =>
@@ -209,27 +206,24 @@ object Interpreter {
       }
   }
 
-  def parseSparql(query: String): ParsedTupleQuery = {
-    QueryParserUtil.parseTupleQuery(QueryLanguage.SPARQL, query, null)
-  }
-
   implicit class SCollectionStatements(val col: SCollection[Statement])
       extends AnyVal {
     def executeSparql(
         query: String
-    ): SCollection[ResultSet] = {
-      val parsedQuery = parseSparql(query)
+    ): SCollection[BindingSet] = {
+      val parsedQuery =
+        QueryParserUtil.parseTupleQuery(QueryLanguage.SPARQL, query, null)
       col.transform("Performing SPARQL Query") { c =>
         processOperation(c)(parsedQuery.getTupleExpr)
       }
     }
   }
 
-  def prepareDataJoin(
+  private def prepareDataJoin(
       fullDataset: SCollection[Statement]
   )(leftExpr: TupleExpr, rightExpr: TupleExpr): (
-      SCollection[(List[Option[String]], ResultSet)],
-      SCollection[(List[Option[String]], ResultSet)]
+      SCollection[(List[Option[String]], BindingSet)],
+      SCollection[(List[Option[String]], BindingSet)]
   ) = {
     val leftBindings = leftExpr.getJoinBindings
     val rightBindings = rightExpr.getJoinBindings
@@ -245,7 +239,7 @@ object Interpreter {
 
   def processOperation(fullDataset: SCollection[Statement])(
       tupleExpr: TupleExpr
-  ): SCollection[ResultSet] = {
+  ): SCollection[BindingSet] = {
     val sc = fullDataset.context
     val results = tupleExpr match {
       case _: SingletonSet =>
@@ -345,8 +339,8 @@ object Interpreter {
           val resultsPerKey = groupElem.getOperator match {
             case sample: Sample =>
               def reductionFunction(
-                  left: (ResultSet, Option[Value]),
-                  right: (ResultSet, Option[Value])
+                  left: (BindingSet, Option[Value]),
+                  right: (BindingSet, Option[Value])
               ) = {
                 (left, right) match {
                   case ((resultSet, x @ Some(_)), _) =>
@@ -389,8 +383,8 @@ object Interpreter {
               }
             case count: Count =>
               def reductionFunction(
-                  left: (ResultSet, Int),
-                  right: (ResultSet, Int)
+                  left: (BindingSet, Int),
+                  right: (BindingSet, Int)
               ) = {
                 left._1 -> (left._2 + right._2)
               }
@@ -433,8 +427,8 @@ object Interpreter {
               }
             case sum: Sum =>
               def reductionFunction(
-                  left: (ResultSet, Option[Literal]),
-                  right: (ResultSet, Option[Literal])
+                  left: (BindingSet, Option[Literal]),
+                  right: (BindingSet, Option[Literal])
               ) = {
                 (left, right) match {
                   case ((resultSet, Some(x)), (_, Some(y))) =>
@@ -482,8 +476,8 @@ object Interpreter {
               }
             case min: Min =>
               def reductionFunction(
-                  left: (ResultSet, Option[Value]),
-                  right: (ResultSet, Option[Value])
+                  left: (BindingSet, Option[Value]),
+                  right: (BindingSet, Option[Value])
               ) = {
                 (left, right) match {
                   case ((resultSet, Some(x)), (_, Some(y))) =>
@@ -528,8 +522,8 @@ object Interpreter {
               }
             case max: Max =>
               def reductionFunction(
-                  left: (ResultSet, Option[Value]),
-                  right: (ResultSet, Option[Value])
+                  left: (BindingSet, Option[Value]),
+                  right: (BindingSet, Option[Value])
               ) = {
                 (left, right) match {
                   case ((resultSet, Some(x)), (_, Some(y))) =>
@@ -578,8 +572,8 @@ object Interpreter {
                   .evaluateValueExpr(groupConcat.getSeparator)
                   .getOrElse(vf.createLiteral(" "))
               def reductionFunction(
-                  left: (ResultSet, Option[Value]),
-                  right: (ResultSet, Option[Value])
+                  left: (BindingSet, Option[Value]),
+                  right: (BindingSet, Option[Value])
               ) = {
                 (left, right) match {
                   case ((resultSet, Some(x)), (_, Some(y))) =>
@@ -630,8 +624,8 @@ object Interpreter {
               }
             case avg: Avg =>
               def reductionFunction(
-                  left: (ResultSet, Option[AverageHelper]),
-                  right: (ResultSet, Option[AverageHelper])
+                  left: (BindingSet, Option[AverageHelper]),
+                  right: (BindingSet, Option[AverageHelper])
               ) = {
                 (left, right) match {
                   case ((resultSet, Some(x)), (_, Some(y))) =>
@@ -695,7 +689,7 @@ object Interpreter {
           }
       case bindingSetAssignment: BindingSetAssignment =>
         val bindings =
-          bindingSetAssignment.getBindingSets.asScala.map(_.toResultSet)
+          bindingSetAssignment.getBindingSets.asScala
         sc.parallelize(bindings)
       case extension: Extension =>
         val results = processOperation(fullDataset)(extension.getArg)
