@@ -128,62 +128,6 @@ object Interpreter {
     }
   }
 
-  private implicit class StatementPatternExt(
-      val statementPattern: StatementPattern
-  ) extends AnyVal {
-    def matches(stmt: Statement): Boolean = {
-      val graph = statementPattern.getContextVar
-      val subject = statementPattern.getSubjectVar
-      val predicate = statementPattern.getPredicateVar
-      val `object` = statementPattern.getObjectVar
-      val graphMatches = {
-        val graphIsNull = (stmt.getContext == null && graph == null)
-        val graphIsEqual = (graph != null) && graph.matches(stmt.getContext)
-        graphIsNull || graphIsEqual
-      }
-      val tripleMatches = {
-        val subjectMatches = subject.matches(stmt.getSubject)
-        val predicateMatches = predicate.matches(
-          stmt.getPredicate
-        )
-        val objectMatches = `object`.matches(stmt.getObject)
-        subjectMatches && predicateMatches && objectMatches
-      }
-      graphMatches && tripleMatches
-    }
-
-    def convertToResultSet(stmt: Statement): BindingSet = {
-      val resultSet = new MapBindingSet()
-      if (!statementPattern.getSubjectVar.hasValue) {
-        resultSet.addBinding(
-          statementPattern.getSubjectVar.getName,
-          stmt.getSubject
-        )
-      }
-      if (!statementPattern.getPredicateVar.hasValue) {
-        resultSet.addBinding(
-          statementPattern.getPredicateVar.getName,
-          stmt.getPredicate
-        )
-      }
-      if (!statementPattern.getObjectVar.hasValue) {
-        resultSet.addBinding(
-          statementPattern.getObjectVar.getName,
-          stmt.getObject
-        )
-      }
-      if (
-        statementPattern.getContextVar != null && !statementPattern.getContextVar.hasValue
-      ) {
-        resultSet.addBinding(
-          statementPattern.getContextVar.getName,
-          stmt.getContext
-        )
-      }
-      resultSet
-    }
-  }
-
   private implicit class BindingsExt(val bindings: Bindings) extends AnyVal {
     def getBindingsOf(resultSet: BindingSet): List[Option[Value]] = {
       bindings.map(k => Option(resultSet.getValue(k)))
@@ -217,6 +161,67 @@ object Interpreter {
         processOperation(c)(parsedQuery.getTupleExpr)
       }
     }
+
+    private[Interpreter] def getMatchingStatements(
+        subject: Option[Var],
+        predicate: Option[Var],
+        `object`: Option[Var],
+        graph: Option[Var]
+    ): SCollection[BindingSet] = {
+      col
+        .filter { stmt =>
+          val graphMatches = {
+            val graphIsNull = (stmt.getContext == null && graph.isEmpty)
+            val graphIsEqual =
+              (graph != null) && graph.forall(_.matches(stmt.getContext))
+            graphIsNull || graphIsEqual
+          }
+          val tripleMatches = {
+            val subjectMatches = subject.forall(_.matches(stmt.getSubject))
+            val predicateMatches =
+              predicate.forall(_.matches(stmt.getPredicate))
+            val objectMatches = `object`.forall(_.matches(stmt.getObject))
+            subjectMatches && predicateMatches && objectMatches
+          }
+          graphMatches && tripleMatches
+        }
+        .map { stmt =>
+          val resultSet = new MapBindingSet()
+          subject.foreach {
+            case subject if !subject.hasValue =>
+              resultSet.addBinding(
+                subject.getName,
+                stmt.getSubject
+              )
+            case _ =>
+          }
+          predicate.foreach {
+            case predicate if !predicate.hasValue =>
+              resultSet.addBinding(
+                predicate.getName,
+                stmt.getPredicate
+              )
+            case _ =>
+          }
+          `object`.foreach {
+            case obj if !obj.hasValue =>
+              resultSet.addBinding(
+                obj.getName,
+                stmt.getObject
+              )
+            case _ =>
+          }
+          graph.foreach {
+            case graph if !graph.hasValue =>
+              resultSet.addBinding(
+                graph.getName,
+                stmt.getContext
+              )
+            case _ =>
+          }
+          resultSet
+        }
+    }
   }
 
   private def prepareDataJoin(
@@ -246,9 +251,19 @@ object Interpreter {
         val bindingSet: BindingSet = new EmptyBindingSet
         sc.parallelize(Seq(bindingSet))
       case statementPattern: StatementPattern =>
-        fullDataset
-          .filter(statementPattern.matches)
-          .map(statementPattern.convertToResultSet)
+        fullDataset.getMatchingStatements(
+          Option(statementPattern.getSubjectVar),
+          Option(statementPattern.getPredicateVar),
+          Option(statementPattern.getObjectVar),
+          Option(statementPattern.getContextVar)
+        )
+      case zeroLengthPath: ZeroLengthPath =>
+        fullDataset.getMatchingStatements(
+          Option(zeroLengthPath.getSubjectVar),
+          None,
+          Option(zeroLengthPath.getObjectVar),
+          Option(zeroLengthPath.getContextVar)
+        )
       case join: Join =>
         (join.getLeftArg, join.getRightArg) match {
           case (left: BindingSetAssignment, right) =>

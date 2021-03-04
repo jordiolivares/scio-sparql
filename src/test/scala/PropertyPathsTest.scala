@@ -27,4 +27,13 @@ class PropertyPathsTest extends SparqlPipelineTest {
         |{  ?s (:item | :price) ?x . }""".stripMargin
     testSparql("property_paths.ttl", RDFFormat.TURTLE, query)
   }
+
+  it should "work if the path is with a zero or one" in {
+    val query =
+      """
+        |PREFIX :   <http://example/>
+        |SELECT * 
+        |{  ?s :item/:price? ?x . }""".stripMargin
+    testSparql("property_paths.ttl", RDFFormat.TURTLE, query)
+  }
 }
