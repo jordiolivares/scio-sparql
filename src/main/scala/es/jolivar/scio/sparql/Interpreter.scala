@@ -16,6 +16,7 @@ import org.eclipse.rdf4j.query.algebra.evaluation.impl.StrictEvaluationStrategy
 import org.eclipse.rdf4j.query.impl.{EmptyBindingSet, MapBindingSet}
 import org.eclipse.rdf4j.query.parser.{ParsedTupleQuery, QueryParserUtil}
 import org.eclipse.rdf4j.query.{
+  Binding,
   BindingSet,
   QueryEvaluationException,
   QueryLanguage
@@ -85,6 +86,17 @@ object Interpreter {
         .filter(x => f(x.getName, x.getValue))
         .foreach(x => filteredResultSet.addBinding(x))
       filteredResultSet
+    }
+
+    def nonNullBindings: Iterable[Binding] = resultSet.asScala
+
+    def canBeJoined(
+        bindingNames: Iterable[String],
+        otherBinding: BindingSet
+    ): Boolean = {
+      bindingNames.forall { bindingName =>
+        otherBinding.getValue(bindingName) == resultSet.getValue(bindingName)
+      }
     }
   }
 
@@ -244,18 +256,30 @@ object Interpreter {
           .filter(statementPattern.matches)
           .map(statementPattern.convertToResultSet)
       case join: Join =>
-        val (keyedLeft, keyedRight) =
-          prepareDataJoin(fullDataset)(join.getLeftArg, join.getRightArg)
         (join.getLeftArg, join.getRightArg) match {
-          case (_: BindingSetAssignment, _) =>
-            keyedRight.hashJoin(keyedLeft).values.map {
-              case (right, left) => left ++ right
+          case (left: BindingSetAssignment, right) =>
+            val rightDataset = processOperation(fullDataset)(right)
+            rightDataset.filter { resultSet =>
+              left.getBindingSets.asScala.exists { assignedBindingSet =>
+                resultSet.canBeJoined(
+                  assignedBindingSet.nonNullBindings.map(_.getName),
+                  assignedBindingSet
+                )
+              }
             }
-          case (_, _: BindingSetAssignment) =>
-            keyedLeft.hashJoin(keyedRight).values.map {
-              case (left, right) => left ++ right
+          case (left, right: BindingSetAssignment) =>
+            val leftDataset = processOperation(fullDataset)(left)
+            leftDataset.filter { resultSet =>
+              right.getBindingSets.asScala.exists { assignedBindingSet =>
+                resultSet.canBeJoined(
+                  assignedBindingSet.nonNullBindings.map(_.getName),
+                  assignedBindingSet
+                )
+              }
             }
           case _ =>
+            val (keyedLeft, keyedRight) =
+              prepareDataJoin(fullDataset)(join.getLeftArg, join.getRightArg)
             keyedLeft.join(keyedRight).values.map {
               case (left, right) =>
                 left ++ right
@@ -285,20 +309,9 @@ object Interpreter {
         val keyedLeft = leftDataset.keyBy(commonBindings.getBindingsForKeying)
         val keyedRight =
           rightDataset.keyBy(commonBindings.getBindingsForKeying)
-        (leftJoin.getLeftArg, leftJoin.getRightArg) match {
-          case (_: BindingSetAssignment, _) =>
-            keyedRight.hashLeftOuterJoin(keyedLeft).values.map {
-              case (right, left) => left.getOrElse(EMPTY_RESULT_SET) ++ right
-            }
-          case (_, _: BindingSetAssignment) =>
-            keyedLeft.hashLeftOuterJoin(keyedRight).values.map {
-              case (left, right) => left ++ right.getOrElse(EMPTY_RESULT_SET)
-            }
-          case _ =>
-            keyedLeft.leftOuterJoin(keyedRight).values.map {
-              case (left, right) =>
-                left ++ right.getOrElse(EMPTY_RESULT_SET)
-            }
+        keyedLeft.leftOuterJoin(keyedRight).values.map {
+          case (left, right) =>
+            left ++ right.getOrElse(EMPTY_RESULT_SET)
         }
       case projection: Projection =>
         val results = processOperation(fullDataset)(projection.getArg)
