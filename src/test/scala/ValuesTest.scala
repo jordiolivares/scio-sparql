@@ -36,6 +36,28 @@ class ValuesTest extends SparqlPipelineTest {
     testSparql("values.ttl", RDFFormat.TURTLE, query)
   }
 
+  it should "work correctly for case #3 with a set object" in {
+    val query =
+      """
+        |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
+        |PREFIX :     <http://example.org/book/> 
+        |PREFIX ns:   <http://example.org/ns#> 
+        |
+        |SELECT ?price
+        |{
+        |   {
+        |     :book2 dc:title ?title;
+        |            ns:price ?price .
+        |   }
+        |   UNION
+        |   {
+        |     [] dc:title "SPARQL Tutorial";
+        |        ns:price ?price .
+        |   }
+        |}""".stripMargin
+    testSparql("values.ttl", RDFFormat.TURTLE, query)
+  }
+
   it should "work correctly when doing a BIND" in {
     val query =
       """
