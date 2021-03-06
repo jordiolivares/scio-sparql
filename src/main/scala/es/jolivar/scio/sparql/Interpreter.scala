@@ -170,20 +170,12 @@ object Interpreter {
     ): SCollection[BindingSet] = {
       col
         .filter { stmt =>
-          val graphMatches = {
-            val graphIsNull = (stmt.getContext == null && graph.isEmpty)
-            val graphIsEqual =
-              (graph != null) && graph.forall(_.matches(stmt.getContext))
-            graphIsNull || graphIsEqual
-          }
-          val tripleMatches = {
-            val subjectMatches = subject.forall(_.matches(stmt.getSubject))
-            val predicateMatches =
-              predicate.forall(_.matches(stmt.getPredicate))
-            val objectMatches = `object`.forall(_.matches(stmt.getObject))
-            subjectMatches && predicateMatches && objectMatches
-          }
-          graphMatches && tripleMatches
+          val graphMatches = graph.forall(_.matches(stmt.getContext))
+          val subjectMatches = subject.forall(_.matches(stmt.getSubject))
+          val predicateMatches =
+            predicate.forall(_.matches(stmt.getPredicate))
+          val objectMatches = `object`.forall(_.matches(stmt.getObject))
+          graphMatches && subjectMatches && predicateMatches && objectMatches
         }
         .map { stmt =>
           val resultSet = new MapBindingSet()
@@ -258,12 +250,49 @@ object Interpreter {
           Option(statementPattern.getContextVar)
         )
       case zeroLengthPath: ZeroLengthPath =>
-        fullDataset.getMatchingStatements(
-          Option(zeroLengthPath.getSubjectVar),
-          None,
-          Option(zeroLengthPath.getObjectVar),
+        val (subjectVar, objectVar, graphVar) = (
+          zeroLengthPath.getSubjectVar,
+          zeroLengthPath.getObjectVar,
           Option(zeroLengthPath.getContextVar)
         )
+        val filteredDataset = graphVar
+          .filter(_.hasValue)
+          .map(graph => fullDataset.filter(_.getContext == graph.getValue))
+          .getOrElse(fullDataset)
+        (subjectVar, objectVar, graphVar) match {
+          case (subjectVar, objectVar, graph)
+              if !subjectVar.hasValue && objectVar.hasValue =>
+            val result = new MapBindingSet(1)
+            result.addBinding(subjectVar.getName, objectVar.getValue)
+            graph.filter(_.hasValue).foreach { graphVar =>
+              result.addBinding(graphVar.getName, graphVar.getValue)
+            }
+            sc.parallelize(Seq[BindingSet](result))
+          case (subjectVar, objectVar, graph)
+              if subjectVar.hasValue && !objectVar.hasValue =>
+            val result = new MapBindingSet(1)
+            result.addBinding(objectVar.getName, subjectVar.getValue)
+            graph.filter(_.hasValue).foreach { graphVar =>
+              result.addBinding(graphVar.getName, graphVar.getValue)
+            }
+            sc.parallelize(Seq[BindingSet](result))
+          case (subjectVar, objectVar, graph)
+              if !subjectVar.hasValue && !objectVar.hasValue =>
+            filteredDataset.flatMap { stmt =>
+              val resultSubject = new MapBindingSet(2)
+              resultSubject.addBinding(subjectVar.getName, stmt.getSubject)
+              resultSubject.addBinding(objectVar.getName, stmt.getSubject)
+              val resultObject = new MapBindingSet(2)
+              resultObject.addBinding(subjectVar.getName, stmt.getObject)
+              resultObject.addBinding(objectVar.getName, stmt.getObject)
+              graph.filter(_.hasValue).foreach { graphVar =>
+                resultSubject.addBinding(graphVar.getName, graphVar.getValue)
+                resultObject.addBinding(graphVar.getName, graphVar.getValue)
+              }
+              Seq[BindingSet](resultSubject, resultObject)
+            }
+          case _ => sc.parallelize(Seq(EMPTY_RESULT_SET))
+        }
       case join: Join =>
         (join.getLeftArg, join.getRightArg) match {
           case (left: BindingSetAssignment, right) =>
