@@ -33,6 +33,7 @@ object Utils {
   }
 
   type BindingSet = Map[String, Value]
+  val EMPTY_BINDING_SET: BindingSet = Map()
 
   def getDatasetAndRepo(
       resourceFile: String,

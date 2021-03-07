@@ -2,6 +2,10 @@ package es.jolivar.scio.sparql
 
 import com.spotify.scio.values.SCollection
 import es.jolivar.scio.sparql.ValueEvaluators._
+import org.apache.beam.sdk.state.{StateSpecs, ValueState}
+import org.apache.beam.sdk.transforms.{DoFn, ParDo}
+import org.apache.beam.sdk.transforms.DoFn.{ProcessElement, StateId}
+import org.apache.beam.sdk.values.KV
 import org.eclipse.rdf4j.common.iteration.CloseableIteration
 import org.eclipse.rdf4j.model._
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory
@@ -234,6 +238,26 @@ object Interpreter {
     (keyedLeft, keyedRight)
   }
 
+  class OffsetStatefulDoFn[T](offset: Long)
+      extends DoFn[KV[T, BindingSet], KV[T, BindingSet]] {
+    @StateId("readCount") private val read =
+      StateSpecs.value[java.lang.Long]() // scalafix:ok
+
+    @ProcessElement
+    def processElement(
+        ctx: ProcessContext,
+        @StateId("readCount") readCount: ValueState[java.lang.Long]
+    ): Unit = {
+      val c = readCount.read()
+      val elem = ctx.element()
+      if (c < offset) {
+        readCount.write(c + 1)
+      } else {
+        ctx.output(elem)
+      }
+    }
+  }
+
   def processOperation(fullDataset: SCollection[Statement])(
       tupleExpr: TupleExpr
   ): SCollection[BindingSet] = {
@@ -241,6 +265,17 @@ object Interpreter {
     val results = tupleExpr match {
       case order: Order =>
         processOperation(fullDataset)(order.getArg)
+      case slice: Slice =>
+        val results = processOperation(fullDataset)(slice.getArg)
+        val offsetResults = results
+          .map(0 -> _)
+          .applyPerKeyDoFn(new OffsetStatefulDoFn(slice.getOffset))
+          .map(_._2)
+        if (slice.hasLimit) {
+          offsetResults.take(slice.getLimit)
+        } else {
+          offsetResults
+        }
       case _: SingletonSet =>
         val bindingSet: BindingSet = new EmptyBindingSet
         sc.parallelize(Seq(bindingSet))
