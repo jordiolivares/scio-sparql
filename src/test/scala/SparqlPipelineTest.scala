@@ -6,6 +6,7 @@ import io.circe.parser.decode
 import io.circe.generic.auto._
 import Utils._
 import cats.Eq
+import org.apache.beam.sdk.testing.PAssert
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory
 import org.eclipse.rdf4j.model.vocabulary.XSD
 
@@ -19,8 +20,9 @@ trait SparqlPipelineTest extends PipelineSpec {
   ): Unit = {
     val (dataset, repo) =
       Utils.getDatasetAndRepo(resourceFile, rdfFormat)
-    val results = repo
+    val tripleResults = repo
       .executeSparql(query)
+    val results = tripleResults
       .map { resultSet =>
         resultSet.toMap.map {
           case key -> value =>
@@ -51,7 +53,7 @@ trait SparqlPipelineTest extends PipelineSpec {
         col
           .map(x => decode[Utils.BindingSet](x).getOrElse(Map()))
           .map(applyFunctionResults) should containInAnyOrder(results)
-        col.count should containValue(results.size.toLong)
+        col should haveSize(results.size)
       }
       .run()
   }

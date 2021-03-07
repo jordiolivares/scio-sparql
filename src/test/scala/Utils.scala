@@ -71,11 +71,11 @@ object Utils {
       Using.Manager { use =>
         val conn = use(repo.getConnection)
         val results = use(conn.prepareTupleQuery(query).evaluate())
-        results.asScala
+        val bindings = results.asScala.toList
+        bindings
           .map(
             _.asScala.toList.sortBy(_.getName).map(x => x.getName -> x.getValue)
           )
-          .toList
       }.get
     }
   }
