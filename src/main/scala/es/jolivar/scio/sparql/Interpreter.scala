@@ -239,6 +239,8 @@ object Interpreter {
   ): SCollection[BindingSet] = {
     val sc = fullDataset.context
     val results = tupleExpr match {
+      case order: Order =>
+        processOperation(fullDataset)(order.getArg)
       case _: SingletonSet =>
         val bindingSet: BindingSet = new EmptyBindingSet
         sc.parallelize(Seq(bindingSet))
