@@ -262,32 +262,41 @@ object Interpreter {
         (subjectVar, objectVar, graphVar) match {
           case (subjectVar, objectVar, graph)
               if !subjectVar.hasValue && objectVar.hasValue =>
-            val result = new MapBindingSet(1)
+            val result = new MapBindingSet(2)
             result.addBinding(subjectVar.getName, objectVar.getValue)
-            graph.filter(_.hasValue).foreach { graphVar =>
-              result.addBinding(graphVar.getName, graphVar.getValue)
+            graph.foreach {
+              case graphVar if graphVar.hasValue =>
+                result.addBinding(graphVar.getName, graphVar.getValue)
+              case _ =>
             }
             sc.parallelize(Seq[BindingSet](result))
           case (subjectVar, objectVar, graph)
               if subjectVar.hasValue && !objectVar.hasValue =>
-            val result = new MapBindingSet(1)
+            val result = new MapBindingSet(2)
             result.addBinding(objectVar.getName, subjectVar.getValue)
-            graph.filter(_.hasValue).foreach { graphVar =>
-              result.addBinding(graphVar.getName, graphVar.getValue)
+            graph.foreach {
+              case graphVar if graphVar.hasValue =>
+                result.addBinding(graphVar.getName, graphVar.getValue)
+              case _ =>
             }
             sc.parallelize(Seq[BindingSet](result))
           case (subjectVar, objectVar, graph)
               if !subjectVar.hasValue && !objectVar.hasValue =>
             filteredDataset.flatMap { stmt =>
-              val resultSubject = new MapBindingSet(2)
+              val resultSubject = new MapBindingSet(3)
               resultSubject.addBinding(subjectVar.getName, stmt.getSubject)
               resultSubject.addBinding(objectVar.getName, stmt.getSubject)
-              val resultObject = new MapBindingSet(2)
+              val resultObject = new MapBindingSet(3)
               resultObject.addBinding(subjectVar.getName, stmt.getObject)
               resultObject.addBinding(objectVar.getName, stmt.getObject)
-              graph.filter(_.hasValue).foreach { graphVar =>
-                resultSubject.addBinding(graphVar.getName, graphVar.getValue)
-                resultObject.addBinding(graphVar.getName, graphVar.getValue)
+              graph.foreach {
+                case graphVar if graphVar.hasValue =>
+                  resultSubject.addBinding(graphVar.getName, graphVar.getValue)
+                  resultObject.addBinding(graphVar.getName, graphVar.getValue)
+                case graphVar if stmt.getContext != null =>
+                  resultSubject.addBinding(graphVar.getName, stmt.getContext)
+                  resultObject.addBinding(graphVar.getName, stmt.getContext)
+                case _ =>
               }
               Seq[BindingSet](resultSubject, resultObject)
             }
