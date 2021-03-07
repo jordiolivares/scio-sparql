@@ -10,7 +10,7 @@ libraryDependencies ++= {
   val scioVersion = "0.9.6"
   Seq(
     "com.spotify" %% "scio-core" % scioVersion,
-    "org.eclipse.rdf4j" % "rdf4j-storage" % "3.5.1",
+    "org.eclipse.rdf4j" % "rdf4j-storage" % "3.6.0",
     "org.scalatest" %% "scalatest" % "3.2.2" % Test,
     "com.spotify" %% "scio-test" % scioVersion % Test,
     "io.circe" %% "circe-core" % "0.13.0" % Test,
