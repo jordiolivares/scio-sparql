@@ -1,0 +1,40 @@
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
+@prefix g:  <tag:example.org,2005-06-06:> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+g:graph1 dc:publisher "Bob" .
+g:graph1 dc:date "2004-12-06"^^xsd:date .
+
+g:graph2 dc:publisher "Bob" .
+g:graph2 dc:date "2005-01-10"^^xsd:date .
+
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<tag:example.org,2005-06-06:graph1> {
+
+    _:a foaf:name "Alice" .
+    _:a foaf:mbox <mailto:alice@work.example> .
+
+    <mailto:alice@work.example> foaf:name "Alice's Work Email" .
+
+    _:b foaf:name "Bob" .
+    _:b foaf:mbox <mailto:bob@oldcorp.example.org> .
+
+    <mailto:bob@oldcorp.example.org> foaf:name "Bob's Oldcorp Email" .
+}
+
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<tag:example.org,2005-06-06:graph2> {
+
+    _:a foaf:name "Alice" .
+    _:a foaf:mbox <mailto:alice@work.example> .
+
+    <mailto:alice@work.example> foaf:name "Alice's Work Email" .
+
+    _:b foaf:name "Bob" .
+    _:b foaf:mbox <mailto:bob@newcorp.example.org> .
+
+    <mailto:bob@newcorp.example.org> foaf:name "Bob's Newcorp Email" .
+
+}
