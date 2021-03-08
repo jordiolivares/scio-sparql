@@ -26,12 +26,16 @@ object ValueEvaluators {
 
   def concat(x: Value*): Value = Functions.CONCAT.evaluate(vf, x: _*)
 
+  implicit val valueOrdering: Ordering[Value] = (x: Value, y: Value) =>
+    valueComparator.compare(x, y)
+
   implicit class ValueExt(val value: Value) extends AnyVal {
     def <(other: Value): Boolean = valueComparator.compare(value, other) < 0
     def ==(other: Value): Boolean = valueComparator.compare(value, other) == 0
     def >(other: Value): Boolean = valueComparator.compare(value, other) > 0
     def <=(other: Value): Boolean = valueComparator.compare(value, other) <= 0
     def >=(other: Value): Boolean = valueComparator.compare(value, other) >= 0
+    def compare(other: Value): Int = valueComparator.compare(value, other)
     def min(other: Value): Value = {
       if (value < other) {
         value

@@ -265,7 +265,11 @@ object Interpreter {
     val results = tupleExpr match {
       case order: Order =>
         processOperation(fullDataset)(order.getArg)
-      case slice: Slice =>
+      case slice: Slice
+          if !slice.getArg
+            .asInstanceOf[Projection]
+            .getArg
+            .isInstanceOf[Order] =>
         val results = processOperation(fullDataset)(slice.getArg)
         val offsetResults = results
           .map(0 -> _)
@@ -276,6 +280,45 @@ object Interpreter {
         } else {
           offsetResults
         }
+      case slice: Slice
+          if slice.getArg
+            .asInstanceOf[Projection]
+            .getArg
+            .isInstanceOf[Order] && slice.hasLimit =>
+        val orderBy =
+          slice.getArg.asInstanceOf[Projection].getArg.asInstanceOf[Order]
+        val preOrdering = processOperation(fullDataset)(orderBy.getArg)
+        val elements = orderBy.getElements.asScala.toList
+        val numToSkip = math.max(slice.getOffset, 0)
+        val numTopElements = slice.getLimit + numToSkip
+        preOrdering
+          .map { bindingSet =>
+            elements
+              .map(x => bindingSet.evaluateValueExpr(x.getExpr)) -> bindingSet
+          }
+          .top(
+            numTopElements.toInt,
+            (
+                x: (List[Option[Value]], BindingSet),
+                y: (List[Option[Value]], BindingSet)
+            ) => {
+              val keyX = x._1
+              val keyY = y._1
+              elements.lazyZip(keyX).lazyZip(keyY).foldLeft(0) {
+                case (-1, _) => -1
+                case (1, _)  => 1
+                // The ordering is switched according to the ASC/DESC modifier
+                case (0, (orderElem, xElem, yElem)) =>
+                  if (orderElem.isAscending)
+                    -xElem.orNull.compare(yElem.orNull)
+                  else
+                    xElem.orNull.compare(yElem.orNull)
+              }
+            }
+          )
+          .map(x => x.drop(numToSkip.toInt))
+          .flatten
+          .values
       case _: SingletonSet =>
         val bindingSet: BindingSet = new EmptyBindingSet
         sc.parallelize(Seq(bindingSet))

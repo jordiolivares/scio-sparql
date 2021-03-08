@@ -39,4 +39,23 @@ class LimitsTest extends SparqlPipelineTest {
       _ => Utils.EMPTY_BINDING_SET
     )
   }
+
+  it should "work correctly with an ORDER BY in a sliced context" in {
+    val query =
+      """
+        |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
+        |PREFIX :     <http://example.org/book/> 
+        |PREFIX ns:   <http://example.org/ns#> 
+        |
+        |SELECT *
+        |{
+        |   ?a ?b ?c
+        |} ORDER BY ?c
+        |LIMIT 3""".stripMargin
+    testSparql(
+      "values.ttl",
+      RDFFormat.TURTLE,
+      query
+    )
+  }
 }
