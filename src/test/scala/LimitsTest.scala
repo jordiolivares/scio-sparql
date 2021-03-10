@@ -40,7 +40,7 @@ class LimitsTest extends SparqlPipelineTest {
     )
   }
 
-  it should "work correctly with an ORDER BY in a sliced context" in {
+  it should "work correctly with an ORDER BY in a sliced (limit) context" in {
     val query =
       """
         |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
@@ -52,6 +52,45 @@ class LimitsTest extends SparqlPipelineTest {
         |   ?a ?b ?c
         |} ORDER BY ?c
         |LIMIT 3""".stripMargin
+    testSparql(
+      "values.ttl",
+      RDFFormat.TURTLE,
+      query
+    )
+  }
+
+  it should "work correctly with an ORDER BY in a sliced (limit + offset) context" in {
+    val query =
+      """
+        |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
+        |PREFIX :     <http://example.org/book/> 
+        |PREFIX ns:   <http://example.org/ns#> 
+        |
+        |SELECT *
+        |{
+        |   ?a ?b ?c
+        |} ORDER BY ?c
+        |OFFSET 1
+        |LIMIT 3""".stripMargin
+    testSparql(
+      "values.ttl",
+      RDFFormat.TURTLE,
+      query
+    )
+  }
+
+  it should "work correctly with an ORDER BY in a sliced (offset) context" in {
+    val query =
+      """
+        |PREFIX dc:   <http://purl.org/dc/elements/1.1/> 
+        |PREFIX :     <http://example.org/book/> 
+        |PREFIX ns:   <http://example.org/ns#> 
+        |
+        |SELECT *
+        |{
+        |   ?a ?b ?c
+        |} ORDER BY ?c
+        |OFFSET 1""".stripMargin
     testSparql(
       "values.ttl",
       RDFFormat.TURTLE,

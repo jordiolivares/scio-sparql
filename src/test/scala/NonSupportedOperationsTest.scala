@@ -1,7 +1,7 @@
 import org.eclipse.rdf4j.rio.RDFFormat
 
 class NonSupportedOperationsTest extends SparqlPipelineTest {
-  "SPARQL with ORDER BY" should "ignore a ASC" in {
+  "SPARQL with ORDER BY and no slice" should "ignore a ASC" in {
     val query =
       """
         |PREFIX : <http://books.example/>
