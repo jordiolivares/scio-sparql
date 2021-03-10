@@ -30,6 +30,10 @@ val bindingSets: SCollection[BindingSet] = statements.executeSparql(
     |    ?person  foaf:mbox  ?email .
     |  }""".stripMargin
 )
+bindingSets.map { bindingSet =>
+  val name = bindingSet.getValue("name").stringValue()
+  // Do something with the bindings
+}
 ```
 
 # SPARQL Limitations
