@@ -284,41 +284,53 @@ object Interpreter {
           if slice.getArg
             .asInstanceOf[Projection]
             .getArg
-            .isInstanceOf[Order] && slice.hasLimit =>
+            .isInstanceOf[Order] =>
         val orderBy =
           slice.getArg.asInstanceOf[Projection].getArg.asInstanceOf[Order]
         val preOrdering = processOperation(fullDataset)(orderBy.getArg)
         val elements = orderBy.getElements.asScala.toList
+        val ordering = new Ordering[(List[Option[Value]], BindingSet)] {
+          def compare(
+              x: (List[Option[Value]], BindingSet),
+              y: (List[Option[Value]], BindingSet)
+          ): Int = {
+            val keyX = x._1
+            val keyY = y._1
+            elements.lazyZip(keyX).lazyZip(keyY).foldLeft(0) {
+              case (-1, _) => -1
+              case (1, _)  => 1
+              // The ordering is switched according to the ASC/DESC modifier
+              case (0, (orderElem, xElem, yElem)) =>
+                if (orderElem.isAscending)
+                  -xElem.orNull.compare(yElem.orNull)
+                else
+                  xElem.orNull.compare(yElem.orNull)
+            }
+          }
+        }
         val numToSkip = math.max(slice.getOffset, 0)
-        val numTopElements = slice.getLimit + numToSkip
-        preOrdering
+        val numToReturn = math.max(slice.getLimit, 0)
+        val numTopElements = numToReturn + numToSkip
+        val topElements = preOrdering
           .map { bindingSet =>
             elements
               .map(x => bindingSet.evaluateValueExpr(x.getExpr)) -> bindingSet
           }
-          .top(
-            numTopElements.toInt,
-            (
-                x: (List[Option[Value]], BindingSet),
-                y: (List[Option[Value]], BindingSet)
-            ) => {
-              val keyX = x._1
-              val keyY = y._1
-              elements.lazyZip(keyX).lazyZip(keyY).foldLeft(0) {
-                case (-1, _) => -1
-                case (1, _)  => 1
-                // The ordering is switched according to the ASC/DESC modifier
-                case (0, (orderElem, xElem, yElem)) =>
-                  if (orderElem.isAscending)
-                    -xElem.orNull.compare(yElem.orNull)
-                  else
-                    xElem.orNull.compare(yElem.orNull)
-              }
+          .top(numTopElements.toInt)(ordering)
+
+        if (numToReturn > 0) {
+          topElements.map(x => x.drop(numToSkip.toInt)).flatten.values
+        } else {
+          val toIgnore = topElements.flatten.values.asSetSingletonSideInput
+          preOrdering
+            .withSideInputs(toIgnore)
+            .filter {
+              case (bindingSet, ctx) =>
+                val resultsToSkip = ctx(toIgnore)
+                !resultsToSkip.contains(bindingSet)
             }
-          )
-          .map(x => x.drop(numToSkip.toInt))
-          .flatten
-          .values
+            .toSCollection
+        }
       case _: SingletonSet =>
         val bindingSet: BindingSet = new EmptyBindingSet
         sc.parallelize(Seq(bindingSet))
