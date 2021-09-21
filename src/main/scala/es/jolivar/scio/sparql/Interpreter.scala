@@ -92,16 +92,22 @@ object Interpreter {
       filteredResultSet
     }
 
-    def nonNullBindings: Iterable[Binding] = resultSet.asScala
-
-    def canBeJoined(
-        bindingNames: Iterable[String],
-        otherBinding: BindingSet
-    ): Boolean = {
-      bindingNames.forall { bindingName =>
-        otherBinding.getValue(bindingName) == resultSet.getValue(bindingName)
+    def joinWith(other: BindingSet): Option[BindingSet] = {
+      val otherBindingNames = other.nonNullBindings.map(_.getName).toSet
+      val thisBindingNames = resultSet.nonNullBindings.map(_.getName).toSet
+      val keysToUse = (otherBindingNames & thisBindingNames)
+      if (
+        keysToUse.forall(bindingName =>
+          other.getValue(bindingName) == resultSet.getValue(bindingName)
+        )
+      ) {
+        Some(resultSet ++ other)
+      } else {
+        None
       }
     }
+
+    def nonNullBindings: Iterable[Binding] = resultSet.asScala
   }
 
   private implicit class VarExt(val v: Var) extends AnyVal {
@@ -398,22 +404,18 @@ object Interpreter {
         (join.getLeftArg, join.getRightArg) match {
           case (left: BindingSetAssignment, right) =>
             val rightDataset = processOperation(fullDataset)(right)
-            rightDataset.filter { resultSet =>
-              left.getBindingSets.asScala.exists { assignedBindingSet =>
-                resultSet.canBeJoined(
-                  assignedBindingSet.nonNullBindings.map(_.getName),
-                  assignedBindingSet
-                )
+            val valuesBindings = left.getBindingSets.asScala
+            rightDataset.flatMap { resultSet =>
+              valuesBindings.flatMap { assignedBindingSet =>
+                assignedBindingSet.joinWith(resultSet)
               }
             }
           case (left, right: BindingSetAssignment) =>
             val leftDataset = processOperation(fullDataset)(left)
-            leftDataset.filter { resultSet =>
-              right.getBindingSets.asScala.exists { assignedBindingSet =>
-                resultSet.canBeJoined(
-                  assignedBindingSet.nonNullBindings.map(_.getName),
-                  assignedBindingSet
-                )
+            val valuesBindings = right.getBindingSets.asScala
+            leftDataset.flatMap { resultSet =>
+              valuesBindings.flatMap { assignedBindingSet =>
+                assignedBindingSet.joinWith(resultSet)
               }
             }
           case _ =>
