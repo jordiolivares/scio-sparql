@@ -38,3 +38,12 @@ g:graph2 dc:date "2005-01-10"^^xsd:date .
     <mailto:bob@newcorp.example.org> foaf:name "Bob's Newcorp Email" .
 
 }
+
+<tag:graph3> {
+    g:item1 g:in g:otherItem .
+}
+
+<tag:graph4> {
+    g:otherItem foaf:name "Test" .
+    g:otherItem a g:class .
+}

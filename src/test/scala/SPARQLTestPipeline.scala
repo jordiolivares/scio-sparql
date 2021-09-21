@@ -20,7 +20,12 @@ object SPARQLTestPipeline {
 
   def main(cmdlineArgs: Array[String]): Unit = {
     val (sc, args) = ContextAndArgs(cmdlineArgs)
-    val query = args("query")
+    val query =
+      try {
+        args("query")
+      } catch {
+        case _: Throwable => args.list("query").mkString(",")
+      }
     val inFile = args("in")
     val outFile = args("out")
     val triples = sc

@@ -36,4 +36,26 @@ class GraphsTest extends SparqlPipelineTest {
         |  }""".stripMargin
     testSparql("graphs.trig", RDFFormat.TRIG, query)
   }
+
+  it should "work correctly with values and named graphs" in {
+    val query =
+      """
+        |PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+        |PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+        |prefix g:  <tag:example.org,2005-06-06:>
+        |
+        |SELECT ?item ?otherItem ?name ?type
+        |WHERE
+        |  {
+        |    VALUES ?type { g:class g:otherClass g:noClass }
+        |    GRAPH <tag:graph3> {
+        |       ?item g:in ?otherItem .
+        |    }
+        |    GRAPH <tag:graph4> {
+        |        ?otherItem foaf:name ?name ;
+        |                     a ?type .
+        |    }
+        |  }""".stripMargin
+    testSparql("graphs.trig", RDFFormat.TRIG, query)
+  }
 }
