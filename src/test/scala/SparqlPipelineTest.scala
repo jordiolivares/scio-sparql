@@ -34,7 +34,7 @@ trait SparqlPipelineTest extends PipelineSpec {
       override def eqv(x: Value, y: Value): Boolean = {
         (x, y) match {
           case (Value(xVal, XSD.DECIMAL, _), Value(yVal, XSD.DECIMAL, _)) =>
-            BigDecimal(xVal) == BigDecimal(yVal)
+            (BigDecimal(xVal) - BigDecimal(yVal)).abs < BigDecimal(0.0001)
           case _ => x == y
         }
       }
