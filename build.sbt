@@ -1,5 +1,7 @@
 name := "scio-sparql"
 
+sonatypeCredentialHost := "s01.oss.sonatype.org"
+
 organization := "es.jolivar"
 homepage := Some(url("https://github.com/jordiolivares/scio-sparql"))
 
