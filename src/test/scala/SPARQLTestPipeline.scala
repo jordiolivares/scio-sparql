@@ -35,18 +35,17 @@ object SPARQLTestPipeline {
     val dummyScollection = sc.parallelize(Seq(1))
     dummyScollection
       .withSideInputs(triplesSideInput)
-      .flatMap {
-        case (_, ctx) =>
-          val triples = ctx(triplesSideInput)
-          triples.map { x =>
-            x.iterator()
-              .asScala
-              .toList
-              .map(m => (m.getName, Utils.rdf4jValue2OurValue(m.getValue)))
-              .toMap
-              .asJson
-              .noSpaces
-          }
+      .flatMap { case (_, ctx) =>
+        val triples = ctx(triplesSideInput)
+        triples.map { x =>
+          x.iterator()
+            .asScala
+            .toList
+            .map(m => (m.getName, Utils.rdf4jValue2OurValue(m.getValue)))
+            .toMap
+            .asJson
+            .noSpaces
+        }
       }
       .toSCollection
       .saveAsTextFile(outFile)

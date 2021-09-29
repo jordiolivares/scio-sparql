@@ -24,9 +24,8 @@ trait SparqlPipelineTest extends PipelineSpec {
       .executeSparql(query)
     val results = tripleResults
       .map { resultSet =>
-        resultSet.toMap.map {
-          case key -> value =>
-            key -> rdf4jValue2OurValue(value)
+        resultSet.toMap.map { case key -> value =>
+          key -> rdf4jValue2OurValue(value)
         }
       }
       .map(applyFunctionResults)
