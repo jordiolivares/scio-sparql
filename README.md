@@ -66,6 +66,9 @@ An additional limitation due to the nature of the Apache Beam model is that if t
 original SCollection it will surface through to the end if the query matches it. To avoid this it would mean making a
 `SCollection[Statement].distinct` shuffle at the beginning, which is potentially *very* expensive.
 
+Currently, there's also no support for `SERVICE` within the SPARQL query as that logic is an entire different
+can of worms.
+
 # How it works
 
 At dataflow building time the program parses the SPARQL query and converts the query into its equivalent algebra
@@ -78,5 +81,3 @@ large amounts of shuffling, but that's the price to pay for running this process
 
 In economic terms this means that some queries might have a larger shuffle cost than a compute cost. In particular
 this is true of Cloud Dataflow using its Dataflow Shuffle service.
-
-One improvement that could be made would be to 
