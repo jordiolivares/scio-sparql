@@ -84,9 +84,8 @@ class AggregatesTest extends SparqlPipelineTest {
       RDFFormat.TURTLE,
       query,
       resultSet => {
-        resultSet.map {
-          case k -> value =>
-            k -> value.copy(value = value.value.split(";").sorted.mkString(";"))
+        resultSet.map { case k -> value =>
+          k -> value.copy(value = value.value.split(";").sorted.mkString(";"))
         }
       }
     )
