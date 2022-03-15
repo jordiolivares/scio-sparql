@@ -24,7 +24,7 @@ versionScheme := Some("semver-spec")
 
 libraryDependencies ++= {
   val scioVersion = "0.11.4"
-  val rdf4jVersion = "3.7.4"
+  val rdf4jVersion = "3.7.5"
   val circeVersion = "0.14.1"
   Seq(
     "com.spotify" %% "scio-core" % scioVersion,
