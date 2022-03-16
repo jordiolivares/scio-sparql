@@ -24,7 +24,7 @@ versionScheme := Some("semver-spec")
 
 libraryDependencies ++= {
   val scioVersion = "0.11.4"
-  val rdf4jVersion = "3.7.4"
+  val rdf4jVersion = "3.7.5"
   val circeVersion = "0.14.1"
   Seq(
     "com.spotify" %% "scio-core" % scioVersion,
@@ -35,7 +35,7 @@ libraryDependencies ++= {
     "org.eclipse.rdf4j" % "rdf4j-queryalgebra-evaluation" % rdf4jVersion,
     "org.eclipse.rdf4j" % "rdf4j-queryparser-sparql" % rdf4jVersion,
     "org.eclipse.rdf4j" % "rdf4j-storage" % rdf4jVersion % Test,
-    "org.scalatest" %% "scalatest" % "3.2.10" % Test,
+    "org.scalatest" %% "scalatest" % "3.2.11" % Test,
     "com.spotify" %% "scio-test" % scioVersion % Test,
     "io.circe" %% "circe-core" % "0.14.1" % Test,
     "io.circe" %% "circe-generic" % circeVersion % Test,
