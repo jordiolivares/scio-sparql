@@ -23,7 +23,7 @@ scalaVersion := "2.13.8"
 versionScheme := Some("semver-spec")
 
 libraryDependencies ++= {
-  val scioVersion = "0.11.7"
+  val scioVersion = "0.11.13"
   val rdf4jVersion = "3.7.7"
   val circeVersion = "0.14.2"
   Seq(
