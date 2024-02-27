@@ -18,7 +18,7 @@ developers := List(
   )
 )
 
-scalaVersion := "2.13.8"
+scalaVersion := "2.13.13"
 
 versionScheme := Some("semver-spec")
 
